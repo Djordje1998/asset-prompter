@@ -45,6 +45,21 @@ function App() {
   const lastPending = useRef<number | null>(null);
   const soundRef = useRef(sound);
   soundRef.current = sound;
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!workspaceRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   const project = state?.projects.find((p) => p.id === projectId) ?? state?.projects[0] ?? null;
   const currentId = project?.id ?? null;
@@ -168,7 +183,7 @@ function App() {
     <>
       <header className="topbar">
         <div className="brand">Asset Prompter</div>
-        <div className="workspace">
+        <div className="workspace" ref={workspaceRef}>
           <button className="btn workspace-button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen}>
             <span>{project ? project.name : "No project"}</span>
             <span className="workspace-caret">{menuOpen ? "▴" : "▾"}</span>

@@ -52,8 +52,14 @@ export function createSlot(projectDir: string, name: string, description: string
   const slotDir = join(projectDir, name);
   if (existsSync(slotDir)) throw new UserError(`A slot named "${name}" already exists.`);
   mkdirSync(slotDir, { recursive: true });
-  if (description.trim()) writeFileSync(join(slotDir, "slot.md"), description.trim() + "\n");
-  addVersion(projectDir, name, version);
+  try {
+    if (description.trim()) writeFileSync(join(slotDir, "slot.md"), description.trim() + "\n");
+    addVersion(projectDir, name, version);
+  } catch (e) {
+    // A rejected first version must not leave a half-made slot behind.
+    rmSync(slotDir, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 export function addVersion(projectDir: string, slot: string, input: NewVersionInput): number {

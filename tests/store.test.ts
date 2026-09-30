@@ -123,3 +123,8 @@ test("deleting a slot moves it to _trash and out of the feed", () => {
   expect(scanProject("p", root, presets)).toEqual([]);
   expect(existsSync(join(root, "hero"))).toBe(false);
 });
+
+test("a slot whose first version is rejected is not left behind", () => {
+  expect(() => createSlot(root, "hero", "For the hero.", { ...image, model: "" })).toThrow("Model is required");
+  expect(existsSync(join(root, "hero"))).toBe(false);
+});

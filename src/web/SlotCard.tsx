@@ -104,6 +104,11 @@ function MediaBox({ slot, version, ctx }: { slot: Slot; version: Version; ctx: C
                     >
                       <Media candidate={c} />
                     </button>
+                    {c.file === version.selected && (
+                      <span className="thumb-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
                   </div>
                 ))}
             </div>
@@ -214,27 +219,64 @@ function InputTile({ input, ctx }: { input: ResolvedInput; ctx: Ctx }) {
 function Feedback({ slot, version, ctx }: { slot: Slot; version: Version; ctx: Ctx }) {
   const saved = version.feedback ?? "";
   const [text, setText] = useState(saved);
+  const [state, setState] = useState<"idle" | "dirty" | "saving" | "saved">("idle");
   const dirty = useRef(false);
   useEffect(() => {
     if (!dirty.current) setText(saved);
   }, [saved]);
-  const save = () => {
-    if (!dirty.current || text.trim() === saved) return;
+  useEffect(() => {
+    if (state !== "saved") return;
+    const timer = setTimeout(() => setState("idle"), 3000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const save = async () => {
+    if (!dirty.current) return;
+    if (text.trim() === saved) {
+      dirty.current = false;
+      setState("idle");
+      return;
+    }
     dirty.current = false;
-    ctx.act(() => call("PUT", `${versionUrl(ctx.project.id, slot.name, version.n)}/feedback`, { text }), text.trim() ? "Comment saved" : "Comment removed");
+    setState("saving");
+    let ok = false;
+    await ctx.act(async () => {
+      await call("PUT", `${versionUrl(ctx.project.id, slot.name, version.n)}/feedback`, { text });
+      ok = true;
+    }, text.trim() ? "Comment saved" : "Comment removed");
+    if (ok) setState("saved");
+    else {
+      dirty.current = true;
+      setState("dirty");
+    }
   };
+  const saveKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "Cmd+Enter" : "Ctrl+Enter";
+  const hint = state === "dirty" ? `Not saved yet. Saves when you click away, or press ${saveKey}.` : state === "saving" ? "Saving" : state === "saved" ? "Saved" : "";
   return (
-    <textarea
-      className="feedback"
-      placeholder="Your comment for the agent: what works, what to change"
-      value={text}
-      rows={2}
-      onChange={(e) => {
-        dirty.current = true;
-        setText(e.target.value);
-      }}
-      onBlur={save}
-    />
+    <div className="feedback-wrap">
+      <textarea
+        className="feedback"
+        placeholder="Your comment for the agent: what works, what to change"
+        value={text}
+        rows={2}
+        onChange={(e) => {
+          dirty.current = true;
+          setState("dirty");
+          setText(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            save();
+          }
+        }}
+        onBlur={save}
+      />
+      {hint && (
+        <div className={`feedback-state is-${state}`} aria-live="polite">
+          {hint}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -373,7 +415,9 @@ export function SlotCard({ slot, ctx }: { slot: Slot; ctx: Ctx }) {
         return (
           <section key={v.n} className="older">
             <button className="older-row" onClick={() => toggle(v.n)} aria-expanded={open.has(v.n)}>
-              <span className="older-caret">{open.has(v.n) ? "−" : "+"}</span>
+              <span className="older-caret" aria-hidden="true">
+                {open.has(v.n) ? "▾" : "▸"}
+              </span>
               <span className="older-n">v{v.n}</span>
               {thumb && <Media candidate={thumb} className="older-thumb" />}
               <span className="older-summary">
