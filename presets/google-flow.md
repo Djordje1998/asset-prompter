@@ -34,8 +34,6 @@ video:
   outputs: [1, 2, 3, 4]
 ---
 
-- Flow has no negative prompt and no seed control. Put everything in the prompt.
-- Video `mode`: `text` takes no inputs; `frames` takes a `start_frame` and optionally an `end_frame`; `ingredients` takes reference images with role `ingredient`. Frames and ingredients cannot be combined.
-- With Veo 3.1, `ingredients` mode only generates 8s clips.
-- `resolution` applies to Omni Flash only. Leave it out for Veo.
-- Image reference images use role `reference`.
+- Flow has no negative prompt and no seed. Write exclusions into the prompt itself ("no people, no text").
+- Veo 3.1 models generate only 8s clips in `ingredients` mode.
+- Videos come with generated sound and Flow has no per-clip switch for it. Describe the sound you want in the prompt, or write "no sound".

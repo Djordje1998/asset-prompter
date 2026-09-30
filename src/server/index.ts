@@ -140,6 +140,8 @@ async function api(req: Request, url: URL): Promise<Response> {
   const body = async () => (await req.json()) as Record<string, any>;
 
   if (parts[0] === "state" && method === "GET") {
+    // A project folder made by hand (or by an agent) gets its instructions as soon as the page notices it.
+    for (const p of listProjects()) writeHowTo(p.path, presets);
     const projects: ProjectSummary[] = listProjects().map((p) => ({ ...p, counts: countStatuses(scanProject(p.id, p.path, presets)) }));
     const state: AppState = { projects, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir };
     return json(state);
