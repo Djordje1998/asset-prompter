@@ -3,3 +3,4 @@ projects/
 config.json
 *.log
 .starting
+briefings.json

@@ -23,7 +23,7 @@ import { eventStream, notifyChange, refreshWatchers } from "./live";
 import { type Project, findProject, isDir, listProjects } from "./projects";
 import { projectScans, selfContained } from "./scans";
 import { countStatuses, mediaKind, scanProject } from "./store";
-import { agentTurn, listening, notifyAgent, waitForNotify } from "./wake";
+import { hasNews, listening, notifyAgent, pendingApprovals, waitForNotify } from "./wake";
 
 export interface App {
   config: Config;
@@ -134,7 +134,8 @@ export function apiRoutes(app: App, wrap: Wrap) {
     "/api/projects/:id": {
       GET: (_, p) => {
         const proj = project(p);
-        return json({ slots: slotsOf(proj), listening: listening(proj.id) });
+        const slots = slotsOf(proj);
+        return json({ slots, listening: listening(proj.id), newApprovals: pendingApprovals(proj.path, slots) });
       },
       DELETE: (_, p) => {
         const proj = project(p);
@@ -159,7 +160,7 @@ export function apiRoutes(app: App, wrap: Wrap) {
       POST: (_, p) => {
         const proj = project(p);
         const slots = slotsOf(proj);
-        if (!agentTurn(slots).length) throw new UserError("Nothing is waiting for the agent.");
+        if (!hasNews(proj.path, slots)) throw new UserError("Nothing new for the agent: no slot is its turn and it has heard of every approval.");
         return json({ delivered: notifyAgent(proj, slots) });
       },
     },

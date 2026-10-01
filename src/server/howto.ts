@@ -49,7 +49,7 @@ The work goes in rounds, at the human's pace:
 
 1. You write every request you can in one go, tell the human in a line or two which slots are waiting, and end your turn.
 2. The human generates them in the tool, maybe all at once, maybe over hours. Nothing arrives while you wait, so end your turn instead of polling the folder, sleeping, or checking back.
-3. The human tells you when a batch is ready${waitUrl ? " by pressing Notify agent, which wakes you (see Waiting for the human)" : ""}, or says "done" in the chat. One round can hold several slots; slots not mentioned are still with the human.
+3. The human tells you when a batch is ready or approved${waitUrl ? " by pressing Notify agent, which wakes you (see Waiting for the human)" : ""}, or says "done" in the chat. One round can hold several slots; slots not mentioned are still with the human.
 4. You review those results, write the next versions where needed, report briefly, and the next round starts.
 
 ## Layout
@@ -106,7 +106,7 @@ If you can run a command in the background and be woken when it ends, finish eve
 curl -s ${waitUrl}
 \`\`\`
 
-It returns when the human presses Notify agent in the app, with a briefing: every slot where it is your turn, what to do, the human's words, and each result with its size and any mismatch. Act on exactly those slots; do not scan the others, and do not re-read this file. Open only the results, plus \`info.md\` where the briefing points to it. In the chat, report one short line per slot, since the details are in your reviews. Then start the command again. If it fails because the app is not running, do not retry: the human will tell you in the chat.
+It returns when the human presses Notify agent in the app, with a briefing: every slot where it is your turn, what to do, the human's words, and each result with its size and any mismatch; and every slot the human approved since the last briefing, with the file to use. Act on exactly those slots; do not scan the others, and do not re-read this file. An approved slot needs no change in its folder: use its final file, or make variants in \`exports/\`, wherever your work needs it. Open only the results, plus \`info.md\` where the briefing points to it. In the chat, report one short line per slot, since the details are in your reviews. Then start the command again. If it fails because the app is not running, do not retry: the human will tell you in the chat.
 `
     : ""
 }

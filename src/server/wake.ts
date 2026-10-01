@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 import type { Slot } from "../shared/types";
 import { recordedInputs } from "./analysis";
 import { describeInfo } from "./media";
@@ -36,15 +38,87 @@ export function agentTurn(slots: Slot[]): string[] {
     });
 }
 
-export function wakeMessage(project: { name: string; path: string }, slots: Slot[]): string {
-  return [
-    `Notify agent in project ${project.name} (${project.path}). Paths below are relative to it.`,
-    "",
-    ...agentTurn(slots),
-    "",
-    "Act on these slots only. Report one short line per slot in the chat, then start waiting again with the same command.",
-    "",
-  ].join("\n");
+// ---- approvals the agent has not heard of ------------------------------
+// An approval is news for the agent: its next job is usually to use the final file. Each briefing records
+// which version of each slot was approved at that moment, so the next one only reports what changed since.
+
+/** Per project path: slot name -> the approved version the agent was last told about. */
+export type Told = Record<string, number>;
+
+export interface BriefingLog {
+  get(projectPath: string): Told;
+  set(projectPath: string, told: Told): void;
+}
+
+/** Kept in memory only; the server swaps in a file-backed log so a restart does not repeat old news. */
+export function memoryLog(): BriefingLog {
+  const all = new Map<string, Told>();
+  return { get: (p) => all.get(p) ?? {}, set: (p, told) => all.set(p, told) };
+}
+
+/** A log stored as JSON at `path`. An unreadable file counts as empty: the agent then hears old approvals once more. */
+export function fileLog(path: string): BriefingLog {
+  let all: Record<string, Told> = {};
+  try {
+    all = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    all = {};
+  }
+  return {
+    get: (p) => all[p] ?? {},
+    set: (p, told) => {
+      all[p] = told;
+      writeFileSync(path, JSON.stringify(all, null, 2) + "\n");
+    },
+  };
+}
+
+let log: BriefingLog = memoryLog();
+export const useBriefingLog = (next: BriefingLog) => {
+  log = next;
+};
+
+/** Approved slots whose approval the agent has not been told about yet. */
+export function newApprovals(slots: Slot[], told: Told): Slot[] {
+  return slots.filter((s) => s.status === "approved" && s.approved !== null && told[s.name] !== s.approved);
+}
+
+/** One line per newly approved slot, with the file to use. */
+export function approvalLines(slots: Slot[]): string[] {
+  return slots.map((s) => {
+    const final = s.finalPath ? `${s.name}/${basename(s.finalPath)}` : `${s.name}/final.<ext>`;
+    const variants = s.variants.length ? ` Your variants are in ${s.name}/exports/.` : "";
+    return `${s.name}: approved v${s.approved}. Use ${final}.${variants}`;
+  });
+}
+
+const approvedNow = (slots: Slot[]): Told => Object.fromEntries(slots.filter((s) => s.status === "approved" && s.approved !== null).map((s) => [s.name, s.approved!]));
+
+/** Whether Notify agent has anything to say for this project. */
+export const hasNews = (projectPath: string, slots: Slot[]) => agentTurn(slots).length > 0 || newApprovals(slots, log.get(projectPath)).length > 0;
+
+export const pendingApprovals = (projectPath: string, slots: Slot[]) => newApprovals(slots, log.get(projectPath)).length;
+
+export function wakeMessage(project: { name: string; path: string }, slots: Slot[], told: Told = {}): string {
+  const turn = agentTurn(slots);
+  const approved = approvalLines(newApprovals(slots, told));
+  const lines = [`Notify agent in project ${project.name} (${project.path}). Paths below are relative to it.`, ""];
+  if (turn.length) lines.push(...turn, "");
+  if (approved.length) lines.push("Approved by the human since the last briefing:", ...approved.map((l) => `  ${l}`), "");
+  const next = !turn.length
+    ? "Nothing in the slots needs changing. Use the approved files where they belong, report briefly in the chat, then start waiting again with the same command."
+    : approved.length
+      ? "Act on the slots where it is your turn, and use the approved files where they belong. Report one short line per slot in the chat, then start waiting again with the same command."
+      : "Act on these slots only. Report one short line per slot in the chat, then start waiting again with the same command.";
+  lines.push(next, "");
+  return lines.join("\n");
+}
+
+/** The briefing to deliver now, and the approvals it reports recorded as told. */
+function deliver(project: { name: string; path: string }, slots: Slot[]): string {
+  const message = wakeMessage(project, slots, log.get(project.path));
+  log.set(project.path, approvedNow(slots));
+  return message;
 }
 
 // ---- waiting agents -----------------------------------------------------
@@ -61,9 +135,9 @@ export const listening = (id: string) => waiters.get(id)?.size ?? 0;
  * nobody waited. `onChange` runs whenever the number of listening agents changes.
  */
 export function waitForNotify(project: Project, slots: Slot[], signal: AbortSignal, onChange: () => void): Promise<string> {
-  if (notifyPending.has(project.id) && agentTurn(slots).length) {
+  if (notifyPending.has(project.id) && hasNews(project.path, slots)) {
     notifyPending.delete(project.id);
-    return Promise.resolve(wakeMessage(project, slots));
+    return Promise.resolve(deliver(project, slots));
   }
   const set = waiters.get(project.id) ?? new Set();
   waiters.set(project.id, set);
@@ -89,7 +163,7 @@ export function notifyAgent(project: Project, slots: Slot[]): boolean {
     notifyPending.add(project.id);
     return false;
   }
-  const message = wakeMessage(project, slots);
+  const message = deliver(project, slots);
   for (const wake of [...set]) wake(message);
   return true;
 }

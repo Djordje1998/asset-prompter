@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const APP_ROOT = resolve(import.meta.dir, "../..");
-const CONFIG_PATH = process.env.ASSET_PROMPTER_CONFIG ?? join(APP_ROOT, "config.json");
+export const CONFIG_PATH = process.env.ASSET_PROMPTER_CONFIG ?? join(APP_ROOT, "config.json");
 
 export interface Config {
   port: number;

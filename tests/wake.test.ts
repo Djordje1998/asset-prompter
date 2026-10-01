@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addResults, createSlot, setChangeRequest, setSelected } from "../src/server/actions";
+import { addResults, createSlot, setApproval, setChangeRequest, setSelected } from "../src/server/actions";
 import { scanProject } from "../src/server/store";
-import { agentTurn, wakeMessage } from "../src/server/wake";
+import { agentTurn, approvalLines, hasNews, memoryLog, newApprovals, notifyAgent, pendingApprovals, useBriefingLog, waitForNotify, wakeMessage } from "../src/server/wake";
 import { age, image, png, presets, tempProject, writeReview } from "./helpers";
 
 // The briefing the agent gets from /wait when the human presses Notify agent.
@@ -82,4 +82,50 @@ test("the wake message names the project and ends with what to do next", async (
   expect(lines[2]).toBe("hero v1: new results. Review them.");
   expect(lines.at(-2)).toBe("Act on these slots only. Report one short line per slot in the chat, then start waiting again with the same command.");
   expect(message.endsWith("\n")).toBe(true);
+});
+
+// ---- approvals ------------------------------------------------------------
+
+const approved = async (name: string) => {
+  await withResults(name);
+  writeReview(root(), name, 1, "approve", "", 60);
+  setApproval(root(), name, 1);
+};
+
+test("approved slots the agent has not heard of are news, with the file to use", async () => {
+  await approved("hero");
+  await approved("logo");
+  mkdirSync(join(root(), "logo", "exports"));
+  writeFileSync(join(root(), "logo", "exports", "logo-32.png"), "x");
+  const fresh = newApprovals(slots(), { hero: 1 });
+  expect(fresh.map((s) => s.name)).toEqual(["logo"]);
+  expect(approvalLines(fresh)).toEqual(["logo: approved v1. Use logo/final.png. Your variants are in logo/exports/."]);
+  // A different version approved since counts as news again.
+  expect(newApprovals(slots(), { hero: 2, logo: 1 }).map((s) => s.name)).toEqual(["hero"]);
+});
+
+test("a briefing with only approvals says nothing needs changing", async () => {
+  await approved("hero");
+  const message = wakeMessage({ name: "demo", path: "/demo" }, slots(), {});
+  expect(message).toContain("Approved by the human since the last briefing:\n  hero: approved v1. Use hero/final.png.");
+  expect(message).toContain("Nothing in the slots needs changing.");
+  expect(message).not.toContain("Act on these slots only");
+});
+
+test("Notify sends approvals once, then only what is new", async () => {
+  useBriefingLog(memoryLog());
+  await approved("hero");
+  const project = { id: "p", name: "p", path: root(), external: false };
+  expect(hasNews(root(), slots())).toBe(true);
+  expect(pendingApprovals(root(), slots())).toBe(1);
+
+  const controller = new AbortController();
+  const waiting = waitForNotify(project, slots(), controller.signal, () => {});
+  expect(notifyAgent(project, slots())).toBe(true);
+  expect(await waiting).toContain("hero: approved v1.");
+
+  // Told once: nothing left to send until something changes.
+  expect(hasNews(root(), slots())).toBe(false);
+  await approved("logo");
+  expect(pendingApprovals(root(), slots())).toBe(1);
 });

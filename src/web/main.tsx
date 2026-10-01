@@ -76,6 +76,8 @@ function App() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   /** How many agents are waiting on this project's /wait, ready to be woken by Notify agent. */
   const [listening, setListening] = useState(0);
+  /** Approvals the agent has not been told about; Notify agent sends them with the agent's turns. */
+  const [newApprovals, setNewApprovals] = useState(0);
   const [filter, setFilter] = useState<Filter>("all");
   const [tab, setTab] = useState<Tab>(readStored("tab") === "done" ? "done" : "progress");
   const view = useViewSettings(tab);
@@ -119,9 +121,10 @@ function App() {
   const refreshSlots = useCallback(async () => {
     if (!currentId) return setSlots(null);
     try {
-      const data = await call<{ slots: Slot[]; listening: number }>("GET", `/api/projects/${enc(currentId)}`);
+      const data = await call<{ slots: Slot[]; listening: number; newApprovals: number }>("GET", `/api/projects/${enc(currentId)}`);
       setSlots(data.slots);
       setListening(data.listening);
+      setNewApprovals(data.newApprovals);
     } catch (e) {
       showToast((e as Error).message, true);
     }
@@ -223,6 +226,8 @@ function App() {
   const done = (slots ?? []).filter((s) => s.status === "approved");
   const visible = inProgress.filter((s) => filter === "all" || s.status === filter);
   const count = (f: Filter) => (f === "all" ? inProgress.length : inProgress.filter((s) => s.status === f).length);
+  /** What Notify agent would send: slots where it is the agent's turn, plus approvals it has not heard of. */
+  const news = count("waiting_agent") + newApprovals;
   const doneItems: LightboxItem[] = done.flatMap((s) => {
     const final = finalResult(s);
     return final ? [{ url: final.url, kind: final.kind, caption: `${s.name} v${s.approved}` }] : [];
@@ -306,7 +311,7 @@ function App() {
           <div className="filters-actions">
           <button
             className={`btn notify${listening ? " is-listening" : ""}`}
-            disabled={count("waiting_agent") === 0}
+            disabled={news === 0}
             onClick={() =>
               act(async () => {
                 const r = await call<{ delivered: boolean }>("POST", `/api/projects/${enc(project.id)}/notify`);
@@ -315,13 +320,13 @@ function App() {
             }
             title={
               listening
-                ? "The agent is waiting. Press to send it every slot where it is its turn."
+                ? "The agent is waiting. Press to send it every slot where it is its turn, and what you approved since the last time."
                 : "The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md."
             }
           >
             <Icon name="robot" />
             Notify agent
-            {count("waiting_agent") > 0 && <span className="filter-count">{count("waiting_agent")}</span>}
+            {news > 0 && <span className="filter-count">{news}</span>}
           </button>
           {count("waiting_review") > 1 && (
             <button

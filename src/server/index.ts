@@ -1,17 +1,20 @@
 import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import index from "../web/index.html";
 import { backfill } from "./analysis";
-import { APP_ROOT, loadConfig } from "./config";
+import { APP_ROOT, CONFIG_PATH, loadConfig } from "./config";
 import { guard, notFound } from "./http";
 import { refreshWatchers, startPings } from "./live";
 import { loadPresets } from "./preset";
 import { type App, apiRoutes, howTo, projectsOf } from "./routes";
+import { fileLog, useBriefingLog } from "./wake";
 
 const config = loadConfig();
 const projectsDir = resolve(APP_ROOT, config.projectsDir);
 mkdirSync(projectsDir, { recursive: true });
 const app: App = { config, projectsDir, presets: loadPresets(join(APP_ROOT, "presets")) };
+// Next to config.json, so a second instance with its own config keeps its own record.
+useBriefingLog(fileLog(join(dirname(CONFIG_PATH), "briefings.json")));
 
 const HOST = "127.0.0.1";
 const guarded = guard(new Set([`${HOST}:${config.port}`, `localhost:${config.port}`]));
