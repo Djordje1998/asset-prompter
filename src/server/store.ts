@@ -1,25 +1,40 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { Candidate, MediaKind, Preset, ResolvedInput, Slot, Status, Version, VersionMeta } from "../shared/types";
+import type { Result, MediaKind, Preset, ResolvedInput, Review, Slot, Status, Version, VersionMeta } from "../shared/types";
 import { parseDoc } from "./frontmatter";
+import { probeMedia, resultChecks } from "./media";
 import { checkAgainstPreset } from "./preset";
 
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"]);
+const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".svg", ".ico"]);
 const VIDEO_EXT = new Set([".mp4", ".webm", ".mov", ".m4v"]);
 
 export const VERSION_FILE = /^v(\d+)\.md$/;
 export const APPROVED_FILE = "APPROVED";
 export const SELECTED_FILE = "selected.txt";
 export const TRASH_DIR = "_trash";
+export const EXPORTS_DIR = "exports";
+/** `changes` is a one-line summary of about 20 words shown above the prompt; only a clearly long one is flagged. */
+const MAX_CHANGE_WORDS = 30;
 
-export function mediaKind(file: string): MediaKind | null {
-  const ext = extname(file).toLowerCase();
-  if (IMAGE_EXT.has(ext)) return "image";
-  if (VIDEO_EXT.has(ext)) return "video";
+/** The rule HOW-TO-USE.md gives agents: lowercase letters, digits and single hyphens between them. */
+export const SLOT_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** `ext` includes the dot, as extname returns it; case does not matter. */
+export function mediaKindOfExt(ext: string): MediaKind | null {
+  const e = ext.toLowerCase();
+  if (IMAGE_EXT.has(e)) return "image";
+  if (VIDEO_EXT.has(e)) return "video";
   return null;
 }
 
+export const mediaKind = (file: string) => mediaKindOfExt(extname(file));
+
 export const framesDirOf = (mediaPath: string) => mediaPath.replace(/\.[^.\\/]+$/, "") + ".frames";
+/** Frame sheets are numbered; other files in a .frames folder are extras such as the motion map. */
+export const SHEET_FILE = /^\d+\.(jpg|png)$/;
+/** vN/ -> vN.review.md, written by the agent next to the version file. */
+export const reviewPathOf = (versionDir: string) => `${versionDir}.review.md`;
+export const changeRequestPathOf = (versionDir: string) => `${versionDir}.feedback.md`;
 
 const isDir = (p: string) => {
   try {
@@ -35,7 +50,19 @@ const mtime = (p: string) => {
     return 0;
   }
 };
+const fileSize = (p: string) => {
+  try {
+    return statSync(p).size;
+  } catch {
+    return 0;
+  }
+};
 const readText = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+const str = (v: unknown): string | null => {
+  if (v === undefined || v === null || typeof v === "object") return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+};
 const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 
 export function fileUrl(projectId: string, root: string, abs: string): string {
@@ -59,18 +86,39 @@ export function listVersionNumbers(slotDir: string): number[] {
     .sort((a, b) => a - b);
 }
 
-export function listCandidateFiles(versionDir: string): string[] {
+export function listResultFiles(versionDir: string): string[] {
   if (!existsSync(versionDir)) return [];
   return readdirSync(versionDir)
     .filter((f) => mediaKind(f) !== null && !isDir(join(versionDir, f)))
     .sort(byNumber);
 }
 
-/** One candidate is always the selected one; with several, the user has to pick. */
-export function selectedCandidate(versionDir: string, files = listCandidateFiles(versionDir)): string | null {
-  if (files.length === 1) return files[0]!;
+export function readReview(versionDir: string): Review | null {
+  const path = reviewPathOf(versionDir);
+  const raw = readText(path);
+  if (raw === null) return null;
+  const doc = parseDoc(raw);
+  const errors: string[] = [];
+  if (doc.error) errors.push(doc.error);
+  const verdict = str(doc.data.verdict)?.toLowerCase() ?? null;
+  if (!doc.error && verdict !== "approve" && verdict !== "revise") errors.push("`verdict` must be approve or revise.");
+  return {
+    verdict: verdict === "approve" || verdict === "revise" ? verdict : null,
+    pick: str(doc.data.pick),
+    text: doc.body,
+    errors,
+    at: mtime(path),
+  };
+}
+
+/** The human's pick wins; without one, the agent's pick from its review; a lone result is always chosen. */
+export function selection(versionDir: string, files = listResultFiles(versionDir)): { file: string | null; by: "human" | "agent" | null } {
+  if (files.length === 1) return { file: files[0]!, by: null };
   const chosen = readText(join(versionDir, SELECTED_FILE))?.trim();
-  return chosen && files.includes(chosen) ? chosen : null;
+  if (chosen && files.includes(chosen)) return { file: chosen, by: "human" };
+  const pick = readReview(versionDir)?.pick;
+  if (pick && files.includes(pick)) return { file: pick, by: "agent" };
+  return { file: null, by: null };
 }
 
 export function readApproved(slotDir: string): number | null {
@@ -78,13 +126,7 @@ export function readApproved(slotDir: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-const str = (v: unknown): string | null => {
-  if (v === undefined || v === null || typeof v === "object") return null;
-  const s = String(v).trim();
-  return s === "" ? null : s;
-};
-
-function readMeta(data: Record<string, unknown>): VersionMeta {
+export function readMeta(data: Record<string, unknown>): VersionMeta {
   const params: Record<string, string> = {};
   if (data.params && typeof data.params === "object" && !Array.isArray(data.params)) {
     for (const [k, v] of Object.entries(data.params)) params[k] = typeof v === "object" ? JSON.stringify(v) : String(v);
@@ -97,7 +139,6 @@ function readMeta(data: Record<string, unknown>): VersionMeta {
     model: str(data.model),
     mode: str(data.mode)?.toLowerCase() ?? null,
     aspect_ratio: str(data.aspect_ratio),
-    outputs: str(data.outputs),
     duration,
     resolution: str(data.resolution),
     changes: str(data.changes),
@@ -155,21 +196,25 @@ function scanVersion(projectId: string, root: string, slotDir: string, n: number
     const preset = presets.find((p) => p.tool === meta.tool);
     if (preset) warnings.push(...checkAgainstPreset(preset, meta, rawInputs.map((i) => i.role), doc.body.length));
   }
+  const changeWords = meta.changes?.split(/\s+/).length ?? 0;
+  if (changeWords > MAX_CHANGE_WORDS) warnings.push(`\`changes\` has ${changeWords} words; keep it to one short sentence of about 20.`);
 
-  const files = listCandidateFiles(dir);
-  const candidates: Candidate[] = files.map((file) => {
+  const files = listResultFiles(dir);
+  const results: Result[] = files.map((file) => {
     const abs = join(dir, file);
     const kind = mediaKind(file)!;
     const framesDir = framesDirOf(abs);
     const frames =
       kind === "video" && existsSync(framesDir)
         ? readdirSync(framesDir)
-            .filter((f) => mediaKind(f) === "image")
+            .filter((f) => SHEET_FILE.test(f))
             .sort(byNumber)
             .map((f) => fileUrl(projectId, root, join(framesDir, f)))
         : [];
-    return { file, kind, url: fileUrl(projectId, root, abs), path: abs, frames };
+    return { file, kind, url: fileUrl(projectId, root, abs), path: abs, frames, info: probeMedia(abs), bytes: fileSize(abs) };
   });
+  const picked = selection(dir, files);
+  const changeRequestPath = changeRequestPathOf(dir);
 
   return {
     n,
@@ -178,11 +223,15 @@ function scanVersion(projectId: string, root: string, slotDir: string, n: number
     meta,
     inputs: [],
     rawInputs,
-    candidates,
-    selected: selectedCandidate(dir, files),
-    feedback: readText(join(slotDir, `v${n}.feedback.md`))?.trim() || null,
+    results,
+    selected: picked.file,
+    selectedBy: picked.by,
+    changeRequest: readText(changeRequestPath)?.trim() || null,
+    changeRequestAt: mtime(changeRequestPath),
+    review: readReview(dir),
     errors,
     warnings,
+    resultWarnings: resultChecks(`v${n}.md`, meta, results),
     path,
     dir,
   };
@@ -197,29 +246,46 @@ function slotStatus(slotDir: string, versions: Version[], approved: number | nul
     const newer = versions.some((v) => v.n > approved && mtime(v.path) > approvedAt);
     if (!newer) return "approved";
   }
-  if (latest.candidates.length === 0) return "waiting_generation";
-  if (latest.feedback) return "waiting_agent";
+  if (latest.results.length === 0) return "waiting_generation";
+  // Every result goes to the agent first; the human confirms what the agent approves.
+  const review = latest.review;
+  // A change request means the human did not accept the result: the agent owes the next version.
+  if (latest.changeRequest) return "waiting_agent";
+  if (!review || review.verdict === null) return "waiting_agent";
+
+  if (latest.results.some((c) => mtime(c.path) > review.at)) return "waiting_agent";
+  if (review.verdict === "revise") return "waiting_agent";
   return "waiting_review";
 }
 
 /** The asset another slot gets when it references this one: the approved pick, else the newest pick. */
-function slotAsset(slot: Slot): { candidate: Candidate | null; missing: string | null } {
-  const pick = (v: Version) => v.candidates.find((c) => c.file === v.selected) ?? null;
+function slotAsset(slot: Slot): { result: Result | null; version: number | null; approved: boolean; missing: string | null } {
+  const pick = (v: Version) => v.results.find((c) => c.file === v.selected) ?? null;
   const approved = slot.versions.find((v) => v.n === slot.approved);
-  if (approved && pick(approved)) return { candidate: pick(approved), missing: null };
-  const withMedia = [...slot.versions].reverse().find((v) => v.candidates.length > 0);
-  if (!withMedia) return { candidate: null, missing: "Not generated yet" };
+  if (approved && pick(approved)) return { result: pick(approved), version: approved.n, approved: true, missing: null };
+  const withMedia = [...slot.versions].reverse().find((v) => v.results.length > 0);
+  if (!withMedia) return { result: null, version: null, approved: false, missing: "Not generated yet" };
   const chosen = pick(withMedia);
-  return chosen ? { candidate: chosen, missing: null } : { candidate: null, missing: `No candidate selected in v${withMedia.n}` };
+  return chosen
+    ? { result: chosen, version: withMedia.n, approved: false, missing: null }
+    : { result: null, version: withMedia.n, approved: false, missing: `No candidate selected in v${withMedia.n}` };
 }
 
 function resolveInput(projectId: string, root: string, input: RawInput, slots: Map<string, Slot>): ResolvedInput {
-  const base = { role: input.role, source: input.slot ?? input.path ?? "", fromSlot: input.slot !== null };
+  const base = { role: input.role, source: input.slot ?? input.path ?? "", fromSlot: input.slot !== null, sourceVersion: null, sourceApproved: false };
   if (input.slot) {
     const slot = slots.get(input.slot);
     if (!slot) return { ...base, kind: null, url: null, path: null, missing: "Slot does not exist" };
-    const { candidate, missing } = slotAsset(slot);
-    return { ...base, kind: candidate?.kind ?? null, url: candidate?.url ?? null, path: candidate?.path ?? null, missing };
+    const { result, version, approved, missing } = slotAsset(slot);
+    return {
+      ...base,
+      kind: result?.kind ?? null,
+      url: result?.url ?? null,
+      path: result?.path ?? null,
+      missing,
+      sourceVersion: version,
+      sourceApproved: approved,
+    };
   }
   const abs = resolve(root, input.path!);
   const kind = mediaKind(abs);
@@ -246,7 +312,14 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
       status: slotStatus(slotDir, versions, approved),
       versions,
       approved: approved !== null && versions.some((v) => v.n === approved) ? approved : null,
+      waitingFor: [],
       finalPath: finalFile ? join(slotDir, finalFile) : null,
+      variants: listResultFiles(join(slotDir, EXPORTS_DIR)).map((file) => {
+        const abs = join(slotDir, EXPORTS_DIR, file);
+        return { file, kind: mediaKind(file)!, url: fileUrl(projectId, root, abs), path: abs, frames: [], info: probeMedia(abs), bytes: fileSize(abs) };
+      }),
+      // Only flagged, never renamed: other files and agents may already refer to the folder by this name.
+      warnings: SLOT_NAME.test(name) ? [] : [`"${name}" is not a valid slot name: use lowercase letters, digits and hyphens, like hero-banner.`],
       createdAt: versions[0] ? mtime(versions[0].path) : Math.floor(statSync(slotDir).birthtimeMs || statSync(slotDir).mtimeMs),
     });
   }
@@ -259,11 +332,20 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
     }
   }
 
+  // A slot built from another slot's result waits until that result is approved, so it is never
+  // generated from a draft that may still change.
+  for (const slot of slots.values()) {
+    if (slot.status !== "waiting_generation") continue;
+    const latest = slot.versions.at(-1)!;
+    slot.waitingFor = [...new Set(latest.inputs.filter((i) => i.fromSlot && !i.sourceApproved).map((i) => i.source))];
+    if (slot.waitingFor.length) slot.status = "waiting_input";
+  }
+
   return [...slots.values()].sort((a, b) => b.createdAt - a.createdAt || a.name.localeCompare(b.name));
 }
 
 export function countStatuses(slots: Slot[]): Record<Status, number> {
-  const counts: Record<Status, number> = { waiting_generation: 0, waiting_review: 0, waiting_agent: 0, approved: 0, empty: 0 };
+  const counts: Record<Status, number> = { waiting_input: 0, waiting_generation: 0, waiting_review: 0, waiting_agent: 0, approved: 0, empty: 0 };
   for (const slot of slots) counts[slot.status]++;
   return counts;
 }

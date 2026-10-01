@@ -2,3 +2,4 @@ node_modules/
 projects/
 config.json
 *.log
+.starting

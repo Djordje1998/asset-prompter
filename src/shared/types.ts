@@ -1,16 +1,40 @@
-export type Status = "waiting_generation" | "waiting_review" | "waiting_agent" | "approved" | "empty";
+export type Status = "waiting_input" | "waiting_generation" | "waiting_review" | "waiting_agent" | "approved" | "empty";
 
-export const STATUSES: Status[] = ["waiting_generation", "waiting_review", "waiting_agent", "approved", "empty"];
+export const STATUSES: Status[] = ["waiting_input", "waiting_generation", "waiting_review", "waiting_agent", "approved", "empty"];
 
 export type MediaKind = "image" | "video";
 
-export interface Candidate {
+export interface MediaInfo {
+  width: number | null;
+  height: number | null;
+  /** Seconds; null for still images. */
+  duration: number | null;
+  audio: boolean;
+}
+
+export interface Result {
   file: string;
   kind: MediaKind;
   url: string;
   path: string;
   /** Contact sheets extracted from a video (2x2 frames per second). */
   frames: string[];
+  /** Null when ffprobe is not installed. */
+  info: MediaInfo | null;
+  /** File size in bytes. */
+  bytes: number;
+}
+
+export type Verdict = "approve" | "revise";
+
+/** The agent's review of a version, from vN.review.md. */
+export interface Review {
+  verdict: Verdict | null;
+  /** The result the agent recommends when there are several. */
+  pick: string | null;
+  text: string;
+  errors: string[];
+  at: number;
 }
 
 export interface ResolvedInput {
@@ -23,6 +47,9 @@ export interface ResolvedInput {
   path: string | null;
   /** Why there is nothing to show yet. */
   missing: string | null;
+  /** For a slot input: the version the file comes from, and whether that version is approved. */
+  sourceVersion: number | null;
+  sourceApproved: boolean;
 }
 
 export interface VersionMeta {
@@ -31,7 +58,6 @@ export interface VersionMeta {
   model: string | null;
   mode: string | null;
   aspect_ratio: string | null;
-  outputs: string | null;
   duration: string | null;
   resolution: string | null;
   changes: string | null;
@@ -44,11 +70,17 @@ export interface Version {
   prompt: string;
   meta: VersionMeta;
   inputs: ResolvedInput[];
-  candidates: Candidate[];
+  results: Result[];
+  /** The chosen result: the human's pick, else the agent's, else the only one. */
   selected: string | null;
-  feedback: string | null;
+  selectedBy: "human" | "agent" | null;
+  changeRequest: string | null;
+  changeRequestAt: number;
+  review: Review | null;
   errors: string[];
   warnings: string[];
+  /** Results that do not match the version file: wrong length, aspect ratio or type. */
+  resultWarnings: string[];
   path: string;
   dir: string;
 }
@@ -61,7 +93,13 @@ export interface Slot {
   /** Ascending by version number. */
   versions: Version[];
   approved: number | null;
+  /** Slots whose approval this one waits for before it can be generated. */
+  waitingFor: string[];
   finalPath: string | null;
+  /** Files the agent derived from the final asset (crops, sizes, formats, edits), from <slot>/exports/. */
+  variants: Result[];
+  /** Problems with the slot folder itself, such as a name agents were told not to use. */
+  warnings: string[];
   createdAt: number;
 }
 
@@ -71,6 +109,8 @@ export interface ProjectSummary {
   path: string;
   external: boolean;
   counts: Record<Status, number>;
+  /** Agents waiting on this project's /wait for Notify agent. */
+  listening: number;
 }
 
 export interface PresetModel {
@@ -84,7 +124,6 @@ export interface PresetModel {
 export interface PresetSection {
   models: PresetModel[];
   aspect_ratios?: string[];
-  outputs?: number[];
 }
 
 export interface Preset {
@@ -109,7 +148,6 @@ export interface NewVersionInput {
   model: string;
   mode?: string;
   aspect_ratio?: string;
-  outputs?: string;
   duration?: string;
   resolution?: string;
   changes?: string;

@@ -34,6 +34,8 @@
   --agent: #c08ab5;
   --approved: #82bc7c;
   --error: #d8705f;
+  --image: #6cc4b8;
+  --video: #e58a5c;
 
   /* the one solid accent */
   --primary: #d9a441;
@@ -85,12 +87,47 @@ button {
   outline-offset: 2px;
 }
 
+/* Pixel glyphs: crisp, never smoothed, aligned with the text next to them. */
+.icon {
+  flex: none;
+  image-rendering: pixelated;
+}
+
+.btn,
+.tab,
+.filter,
+.toggle,
+.link-icon,
+.brand {
+  gap: 7px;
+}
+
+.link-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  flex: none;
+}
+
+/* The state glyph replaces the dot on status tags. */
+.status-tag::before {
+  display: none;
+}
+
 /* Tint helpers: a tone at low opacity over the surface. */
 .status-tag,
 .notice,
 .filter.is-on,
 .btn-approve,
-.mediabox-pick {
+.mediabox-pick,
+.pop-chip {
   --tint: color-mix(in srgb, var(--tone) 14%, transparent);
   --tint-edge: color-mix(in srgb, var(--tone) 38%, transparent);
 }
@@ -211,14 +248,46 @@ button {
 
 .workspace-button {
   display: flex;
-  gap: 10px;
-  min-width: 180px;
-  justify-content: space-between;
+  align-items: center;
+  gap: 9px;
+  min-width: 200px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.workspace-icon {
+  color: var(--primary);
+}
+
+.workspace-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  margin-right: auto;
+}
+
+.workspace-label {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .workspace-caret {
   color: var(--muted);
-  font-size: 11px;
+  transition: transform 120ms;
+}
+
+.workspace-caret.is-open {
+  transform: rotate(180deg);
 }
 
 .menu {
@@ -251,23 +320,22 @@ button {
   background: var(--card-hover);
 }
 
+/* The open project: tinted row, accent bar and a check. */
+.menu-item.is-current {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
 .menu-item.is-current .menu-name {
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 700;
 }
 
-.menu-item.is-current::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text);
+.menu-mark {
+  display: flex;
+  width: 12px;
   flex: none;
-}
-
-.menu-item:not(.is-current)::before {
-  content: "";
-  width: 6px;
-  flex: none;
+  color: var(--primary);
 }
 
 .menu-path {
@@ -300,31 +368,49 @@ button {
 }
 
 .toggle {
-  background: none;
-  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  white-space: nowrap;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
   color: var(--muted);
-  font-weight: 500;
-  font-size: 14px;
-  padding: 2px 0;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 60ms, box-shadow 60ms;
+}
+
+.toggle:hover {
+  color: var(--text);
+  background: var(--card-hover);
+}
+
+/* Pressed in while on, like a latched key. */
+.toggle.is-on {
+  color: var(--text);
+  background: var(--well);
+  box-shadow: inset 2px 2px 0 var(--ink);
+  transform: translate(1px, 1px);
 }
 
 .toggle::before {
   content: "";
-  display: inline-block;
+  flex: none;
   width: 8px;
   height: 8px;
-  margin-right: 7px;
   border-radius: 50%;
   background: var(--edge-strong);
-  vertical-align: 1px;
-}
-
-.toggle.is-on {
-  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--ink);
 }
 
 .toggle.is-on::before {
   background: var(--approved);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--approved) 70%, transparent);
 }
 
 /* ---- filters ---- */
@@ -336,6 +422,527 @@ button {
   max-width: 1240px;
   margin: 0 auto;
   padding: 18px 20px 0;
+}
+
+/* A prompt already copied once: quieter, with a check, still clickable. */
+/* Split button: one raised block, two click areas; each half lights up on its own. */
+.split {
+  display: inline-flex;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
+}
+
+.split .btn {
+  box-shadow: none;
+}
+
+.split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-side {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.split-side:hover {
+  color: var(--text);
+}
+
+.btn-unapprove {
+  --tone: var(--error);
+  background: color-mix(in srgb, var(--tone) 12%, var(--card-hover));
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--edge-strong));
+  color: color-mix(in srgb, var(--tone) 80%, var(--text));
+}
+
+.btn-unapprove:hover {
+  background: color-mix(in srgb, var(--tone) 20%, var(--card-hover));
+}
+
+.btn-copied {
+  --tone: var(--approved);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+  color: var(--tone);
+}
+
+.btn-copied:hover {
+  background: color-mix(in srgb, var(--tone) 20%, transparent);
+}
+
+.filters-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Notify agent: the lamp is green while an agent is waiting to be woken. */
+.notify::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--edge-strong);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.notify.is-listening::before {
+  background: var(--approved);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--approved) 70%, transparent);
+}
+
+/* The same lamp in the project picker: an agent is waiting on that project. */
+.agent-lamp {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--approved);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--approved) 70%, transparent);
+  vertical-align: 1px;
+}
+
+.notify:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---- content width: Normal / Wide / Full, per tab; the bars above keep theirs ---- */
+
+.feed[data-width="wide"] {
+  max-width: 1840px;
+}
+
+.feed[data-width="full"] {
+  max-width: none;
+}
+
+/* ---- tabs: In progress / Done ---- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 16px 20px 0;
+  border-bottom: var(--line);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -1px;
+  padding: 8px 14px;
+  background: none;
+  border: 1px solid transparent;
+  border-bottom-color: var(--edge);
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--muted);
+  font: 600 15px/1.2 var(--display);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.is-on {
+  background: var(--card);
+  border-color: var(--edge-strong);
+  border-bottom-color: var(--card);
+  color: var(--text);
+}
+
+/* ---- Done grid ---- */
+
+.view {
+  position: relative;
+  margin-left: auto;
+  align-self: center;
+  padding-bottom: 6px;
+}
+
+.view-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.view-button:hover,
+.view-button.is-on {
+  color: var(--text);
+  background: var(--card);
+  border-color: var(--edge-strong);
+}
+
+.view-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 300px;
+  padding: 14px;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.view-label {
+  width: 64px;
+  flex: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.view-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--primary);
+}
+
+.view-value {
+  width: 16px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.view-note {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.segmented {
+  display: flex;
+  flex: 1;
+  padding: 2px;
+  background: var(--well);
+  border: var(--line);
+  border-radius: 6px;
+}
+
+.segment {
+  flex: 1;
+  height: 24px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment.is-on {
+  background: var(--card-hover);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--edge-strong);
+}
+
+.done-grid {
+  display: grid;
+  /* Images per row is chosen in View; the width setting decides how big that makes them. */
+  grid-template-columns: repeat(var(--per-row, 4), minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+@media (max-width: 860px) {
+  .done-grid {
+    grid-template-columns: repeat(min(var(--per-row, 4), 3), minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .done-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Compact: tight gaps, a thin label bar and images filling their frame, so more fits with less dead space. */
+.done-grid.is-compact {
+  gap: 6px;
+}
+
+.done-grid.is-compact .tile {
+  box-shadow: none;
+  border-color: var(--edge);
+}
+
+.done-grid.is-compact .tile-media img,
+.done-grid.is-compact .tile-media video {
+  object-fit: cover;
+}
+
+.done-grid.is-compact .tile-bar {
+  gap: 4px;
+  padding: 3px 6px;
+}
+
+.done-grid.is-compact .tile-name {
+  font-size: 12px;
+}
+
+.done-grid.is-compact .tile-bar .card-version,
+.done-grid.is-compact .tile-details {
+  font-size: 11px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
+  overflow: hidden;
+}
+
+.tile-media {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Every tile is the same 16:9 frame; the asset is fitted whole inside it, whatever its shape. */
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--ink);
+  border: 0;
+  cursor: zoom-in;
+}
+
+.tile-media img,
+.tile-media video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.tile {
+  position: relative;
+  container-type: inline-size;
+}
+
+/* Narrow tiles (many columns): the name gets its own line above the controls. */
+@container (max-width: 290px) {
+  .tile-bar {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .tile-name {
+    flex-basis: 100%;
+  }
+}
+
+.tile-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.tile-copy:hover {
+  background: var(--card-hover);
+}
+
+.tile:hover .tile-copy,
+.mediabox-main:hover .tile-copy,
+.tile-copy:focus-visible {
+  opacity: 1;
+}
+
+.tile-exports {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 7px;
+  background: color-mix(in srgb, var(--ink) 75%, transparent);
+  border: 1px solid var(--edge-strong);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tile-exports:hover {
+  background: var(--card-hover);
+}
+
+/* ---- exports dialog ---- */
+
+.exports {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  list-style: none;
+}
+
+.export {
+  display: flex;
+  flex-direction: column;
+  background: var(--well);
+  border: var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.export-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  background:
+    repeating-conic-gradient(var(--ink) 0 25%, var(--well) 0 50%) 0 0 / 16px 16px;
+  border: 0;
+  cursor: zoom-in;
+}
+
+.export-media img,
+.export-media video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Tiny exports (icons, favicons) are blown up as sharp pixels, not blurred. */
+.export-media.is-small img {
+  image-rendering: pixelated;
+}
+
+.export-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 4px;
+  min-width: 0;
+}
+
+.export-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.export-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 10px;
+}
+
+.tile-play {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 75%, transparent);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.tile-missing {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.tile-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: var(--line);
+}
+
+.tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 14px/1.3 var(--display);
+}
+
+.tile-bar .card-copy {
+  margin-left: 0;
+  flex: none;
+}
+
+.tile-details {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+/* The full card of a Done slot, opened from its tile. */
+.modal:has(.detail-body) {
+  width: min(1200px, 100%);
+}
+
+.detail-body {
+  padding: 16px;
 }
 
 .filter {
@@ -361,8 +968,23 @@ button {
 .filter-waiting_agent {
   --tone: var(--agent);
 }
+.filter-waiting_input {
+  --tone: var(--faint);
+}
 .filter-approved {
   --tone: var(--approved);
+}
+
+.filter-count.is-hot {
+  background: var(--generate);
+  color: var(--on-primary);
+}
+
+.btn-small {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+  gap: 5px;
 }
 
 .filter-count {
@@ -420,6 +1042,10 @@ button {
 .status-waiting_review {
   --tone: var(--review);
 }
+/* Blocked until an input slot is approved: nothing to do yet, so it stays quiet. */
+.status-waiting_input {
+  --tone: var(--faint);
+}
 .status-waiting_agent {
   --tone: var(--agent);
 }
@@ -470,6 +1096,50 @@ button {
   color: var(--muted);
   font-weight: 600;
   font-size: 14px;
+}
+
+.card-toggle,
+.card-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.card-toggle {
+  margin-right: -4px;
+  width: 28px;
+  height: 28px;
+}
+
+.card-copy {
+  margin-left: -8px;
+}
+
+.card-toggle:hover,
+.card-copy:hover {
+  background: var(--card-hover);
+  border-color: var(--edge);
+  color: var(--text);
+}
+
+.card-thumb {
+  width: 40px;
+  height: 24px;
+  object-fit: cover;
+  border: var(--line);
+  border-radius: 3px;
+}
+
+.card.is-collapsed .card-head {
+  border-bottom: 0;
 }
 
 .card-tools {
@@ -541,21 +1211,34 @@ button {
   text-align: center;
 }
 
+.mediabox-empty-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 20px;
+}
+
+.mediabox-empty-area .mediabox-empty {
+  min-height: 180px;
+  padding-bottom: 12px;
+}
+
 .mediabox-empty strong {
   color: var(--text);
   font: 600 17px/1.3 var(--display);
 }
 
-.mediabox-empty::before {
-  content: "";
-  width: 36px;
-  height: 36px;
+/* The kind of result this slot wants: an image or a video. */
+.mediabox-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   margin-bottom: 6px;
   border: 1px dashed color-mix(in srgb, var(--tone) 70%, var(--edge));
   border-radius: 8px;
-  background: linear-gradient(var(--muted), var(--muted)) center / 14px 1px no-repeat,
-    linear-gradient(var(--muted), var(--muted)) center / 1px 14px no-repeat;
-  opacity: 0.8;
+  color: var(--tone);
 }
 
 .mediabox-empty:hover {
@@ -646,6 +1329,16 @@ button {
   box-shadow: 0 0 0 1px var(--text);
 }
 
+/* The agent's pick: selected until the human picks one themselves. */
+.thumb.is-agent button {
+  border-color: var(--agent);
+  box-shadow: 0 0 0 1px var(--agent);
+}
+
+.thumb.is-agent .thumb-check {
+  background: var(--agent);
+}
+
 .thumb-check {
   position: absolute;
   right: -4px;
@@ -670,6 +1363,16 @@ button {
   display: block;
 }
 
+.mediabox-info {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .mediabox-tools {
   margin-left: auto;
   display: flex;
@@ -681,6 +1384,27 @@ button {
 
 .mediabox-tools .link {
   padding: 2px 5px;
+}
+
+/* Narrow result column (smaller laptops, the Details dialog): file info on its own line, tools in one row under it. */
+.mediabox {
+  container-type: inline-size;
+}
+
+@container (max-width: 470px) {
+  .mediabox-bar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .mediabox-info {
+    flex-basis: 100%;
+  }
+
+  .mediabox-tools {
+    margin-left: -5px;
+    justify-content: flex-start;
+  }
 }
 
 .mediabox-drop {
@@ -725,6 +1449,38 @@ button {
   cursor: default;
 }
 
+.chip-icon,
+.chip-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Image or video: a colour of its own, so it is never mistaken for the other. */
+.chip-kind {
+  --tone: var(--muted);
+  background: color-mix(in srgb, var(--tone) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 50%, transparent);
+  color: var(--tone);
+  font-weight: 600;
+}
+
+.mediabox-icon.is-image {
+  --tone: var(--image);
+}
+
+.mediabox-icon.is-video {
+  --tone: var(--video);
+}
+
+.chip-kind.is-image {
+  --tone: var(--image);
+}
+
+.chip-kind.is-video {
+  --tone: var(--video);
+}
+
 .chip-strong {
   background: var(--card-hover);
   border-color: var(--edge-strong);
@@ -751,15 +1507,21 @@ button {
 }
 
 .prompt-text {
-  padding: 12px 14px;
+  padding: 12px 14px 0;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
-  line-clamp: 6;
-  overflow: hidden;
+  /* Three whole lines; the rest scrolls. The bottom gap lives in ::after so no half line peeks in. */
+  max-height: calc(3lh + 12px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.prompt-text::after {
+  content: "";
+  display: block;
+  height: 12px;
 }
 
 .prompt-bar {
@@ -841,7 +1603,8 @@ button {
   white-space: nowrap;
 }
 
-.input-missing {
+.input-missing,
+.input-unapproved {
   color: var(--generate);
 }
 
@@ -869,9 +1632,36 @@ button {
 }
 
 .feedback-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.feedback-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--faint);
+  font-size: 16px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.feedback-close:hover {
+  background: var(--card-hover);
+  color: var(--text);
+}
+
+.feedback {
+  padding-right: 28px;
 }
 
 .feedback {
@@ -936,6 +1726,102 @@ button {
   --tone: var(--generate);
 }
 
+/* Status chips (agent review, warnings) that open their text in a panel. */
+.pop-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pop {
+  position: relative;
+}
+
+.pop-chip,
+.pop-panel {
+  --tone: var(--agent);
+}
+
+.pop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--tint);
+  border: 1px solid var(--tint-edge);
+  border-radius: 4px;
+  padding: 1px 9px;
+  color: var(--tone);
+  font: 600 13px/20px var(--body);
+  cursor: pointer;
+}
+
+.pop-chip:hover,
+.pop-chip[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
+.pop-chip.is-approve,
+.pop-panel.is-approve {
+  --tone: var(--review);
+}
+
+.pop-chip.is-warn,
+.pop-panel.is-warn {
+  --tone: var(--generate);
+}
+
+.pop-chip.is-error,
+.pop-panel.is-error {
+  --tone: var(--error);
+}
+
+.pop-caret {
+  opacity: 0.85;
+  transition: transform 120ms;
+}
+
+.pop-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.pop-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--generate);
+}
+
+.pop-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(460px, 80vw);
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+
+.pop-text {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.pop-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+
+
+
 /* ---- older versions ---- */
 
 .older {
@@ -961,10 +1847,16 @@ button {
 }
 
 .older-caret {
-  width: 12px;
-  color: var(--faint);
-  font-size: 12px;
-  text-align: center;
+  display: flex;
+  color: var(--muted);
+}
+
+.chevron {
+  transition: transform 120ms;
+}
+
+.chevron.is-open {
+  transform: rotate(90deg);
 }
 
 .older-n {
@@ -1012,6 +1904,24 @@ button {
 .blank p {
   flex-basis: 100%;
   max-width: 62ch;
+}
+
+.empty-art {
+  flex-basis: 100%;
+  max-width: 240px;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.blank-center {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 72px 0;
+}
+
+.blank-center p {
+  flex-basis: auto;
 }
 
 main.blank {
@@ -1071,6 +1981,30 @@ main.blank {
 }
 
 .modal > .modal-foot {
+  padding: 12px 18px;
+  border-top: var(--line);
+}
+
+/* On short laptop screens the dialog scrolls; its title, Close and main button stay in view. */
+.modal-head,
+.modal > .modal-foot,
+.form > .modal-foot {
+  position: sticky;
+  z-index: 2;
+  background: var(--card);
+}
+
+.modal-head {
+  top: 0;
+}
+
+.modal > .modal-foot {
+  bottom: 0;
+}
+
+.form > .modal-foot {
+  bottom: 0;
+  margin: 0 -18px -18px;
   padding: 12px 18px;
   border-top: var(--line);
 }
@@ -1171,22 +2105,86 @@ main.blank {
   box-shadow: var(--shadow);
 }
 
+/* Info on the left, navigation in the middle, actions on the right. */
 .lightbox-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
-  padding: 12px 20px;
+  /* The bar spans the screen, its controls stay within a 880px column so the eye does not travel. */
+  padding: 12px max(20px, calc((100% - 880px) / 2));
   background: var(--bar);
   border-top: var(--line);
 }
 
+.lightbox-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .lightbox-caption {
-  min-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font: 600 14px/1.3 var(--display);
+}
+
+.lightbox-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.lightbox-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lightbox-step {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+}
+
+.lightbox-count {
+  min-width: 48px;
   text-align: center;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.lightbox-close {
+  background: none;
+  box-shadow: none;
+}
+
+.icon.flip {
+  transform: scaleX(-1);
+}
+
+@media (max-width: 640px) {
+  .lightbox-bar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .lightbox-info {
+    grid-column: 1 / -1;
+  }
 }
 
 .toast {
@@ -1215,6 +2213,23 @@ main.blank {
 /* Keep the toast clear of the viewer's bottom bar. */
 .lightbox ~ .toast {
   bottom: 80px;
+}
+
+/* Laptops with display scaling and half-screen windows: the top bar drops labels before it would spill. */
+@media (max-width: 1100px) {
+  .narrow-hide {
+    display: none;
+  }
+
+  .toggle {
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 960px) {
+  .brand-name {
+    display: none;
+  }
 }
 
 @media (max-width: 860px) {
@@ -1266,4 +2281,137 @@ main.blank {
   .thumb button {
     transition: color 100ms, opacity 100ms, border-color 100ms;
   }
+}
+
+/* ---- loading placeholders ---- */
+
+/* A soft band that sweeps across while something loads; still when the system asks for less motion. */
+.skeleton,
+img.is-loading,
+video.is-loading {
+  background: linear-gradient(100deg, var(--well) 30%, var(--card-hover) 50%, var(--well) 70%) 0 0 / 300% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton,
+  img.is-loading,
+  video.is-loading {
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* An image has no size before it loads, so the big one in a card holds a 16:9 frame until then. */
+.mediabox-main img.is-loading {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.skeleton-line {
+  display: block;
+  width: 40%;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.skeleton-line.is-long {
+  width: 100%;
+}
+
+.skeleton-media {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+}
+
+.skeleton-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-card .card-head {
+  min-height: 45px;
+}
+
+.skeleton-tile .tile-bar {
+  min-height: 36px;
+  align-items: center;
+}
+
+/* ---- compact cards in progress: less padding, smaller media, shorter prompt, so more cards fit ---- */
+
+.feed.is-compact {
+  gap: 10px;
+}
+
+.feed.is-compact .card {
+  box-shadow: var(--shadow-small);
+}
+
+.feed.is-compact .card-head {
+  padding: 6px 12px;
+}
+
+.feed.is-compact .card-head h2 {
+  font-size: 15px;
+}
+
+.feed.is-compact .card-description {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.feed.is-compact .version-body {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.feed.is-compact .version-info {
+  gap: 8px;
+}
+
+.feed.is-compact .mediabox-main img,
+.feed.is-compact .mediabox-main video {
+  max-height: 240px;
+}
+
+.feed.is-compact .mediabox-empty-area {
+  padding-bottom: 12px;
+}
+
+.feed.is-compact .mediabox-empty-area .mediabox-empty {
+  min-height: 0;
+  padding: 14px 12px 8px;
+}
+
+.feed.is-compact .mediabox-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 0;
+}
+
+.feed.is-compact .mediabox-empty strong {
+  font-size: 15px;
+}
+
+.feed.is-compact .prompt-text {
+  padding-top: 8px;
+  max-height: calc(2lh + 8px);
+}
+
+.feed.is-compact .prompt-text::after {
+  height: 8px;
+}
+
+.feed.is-compact .prompt-bar {
+  padding: 6px 10px;
 }
