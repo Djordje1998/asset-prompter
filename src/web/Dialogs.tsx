@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { NewVersionInput, Preset, Slot, Version } from "../shared/types";
-import type { LightboxItem } from "./SlotCard";
+import { useEscape } from "./hooks";
+import { Icon } from "./icons";
+import { formatBytes } from "./lib";
+import type { LightboxItem } from "./context";
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-label={title}>
@@ -37,42 +36,119 @@ export function PromptDialog({ slot, version, onCopy, onClose }: { slot: Slot; v
   );
 }
 
-export function Lightbox({ items, start, onClose }: { items: LightboxItem[]; start: number; onClose: () => void }) {
+/** Size, type and length of what the lightbox shows, read from the file itself. */
+interface MediaFacts {
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+  seconds: number | null;
+}
+
+const typeOf = (url: string) => (url.split("?")[0]!.split(".").pop() ?? "").toUpperCase();
+
+export function Lightbox({
+  items,
+  start,
+  onClose,
+  onCopyImage,
+}: {
+  items: LightboxItem[];
+  start: number;
+  onClose: () => void;
+  onCopyImage?: (url: string) => void;
+}) {
   const [index, setIndex] = useState(start);
+  const [facts, setFacts] = useState<MediaFacts>({ width: null, height: null, bytes: null, seconds: null });
   const item = items[index]!;
   const step = (d: number) => setIndex((i) => (i + d + items.length) % items.length);
+  useEscape(onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft") step(-1);
       if (e.key === "ArrowRight") step(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+  // File size from a one-byte range request: the server answers with the full length in Content-Range.
+  useEffect(() => {
+    let live = true;
+    setFacts({ width: null, height: null, bytes: null, seconds: null });
+    fetch(item.url, { headers: { Range: "bytes=0-0" } })
+      .then((res) => {
+        const total = /\/(\d+)$/.exec(res.headers.get("content-range") ?? "")?.[1] ?? res.headers.get("content-length");
+        if (live && total) setFacts((f) => ({ ...f, bytes: Number(total) }));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [item.url]);
+  const meta = [
+    facts.width && facts.height ? `${facts.width}×${facts.height}` : null,
+    typeOf(item.url) || null,
+    facts.bytes !== null ? formatBytes(facts.bytes) : null,
+    facts.seconds ? `${facts.seconds.toFixed(1)}s` : null,
+  ].filter(Boolean);
   return (
     <div className="overlay lightbox" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="lightbox-stage" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-        {item.kind === "video" ? <video key={item.url} src={item.url} controls autoPlay loop /> : <img key={item.url} src={item.url} alt="" />}
+        {item.kind === "video" ? (
+          <video
+            key={item.url}
+            src={item.url}
+            controls
+            autoPlay
+            loop
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              setFacts((f) => ({ ...f, width: v.videoWidth, height: v.videoHeight, seconds: v.duration }));
+            }}
+          />
+        ) : (
+          <img
+            key={item.url}
+            src={item.url}
+            alt=""
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setFacts((f) => ({ ...f, width: img.naturalWidth, height: img.naturalHeight }));
+            }}
+          />
+        )}
       </div>
       <footer className="lightbox-bar">
-        {items.length > 1 && (
-          <button className="btn" onClick={() => step(-1)}>
-            Previous
+        <div className="lightbox-info">
+          <span className="lightbox-caption">{item.caption}</span>
+          <span className="lightbox-meta">{meta.join("  ·  ")}</span>
+        </div>
+        <div className="lightbox-nav">
+          {items.length > 1 && (
+            <>
+              <button className="btn lightbox-step" onClick={() => step(-1)} aria-label="Previous" title="Previous (Left arrow)">
+                <Icon name="chevron" className="flip" />
+              </button>
+              <span className="lightbox-count">
+                {index + 1} / {items.length}
+              </span>
+              <button className="btn lightbox-step" onClick={() => step(1)} aria-label="Next" title="Next (Right arrow)">
+                <Icon name="chevron" />
+              </button>
+            </>
+          )}
+        </div>
+        <div className="lightbox-actions">
+          {onCopyImage && item.kind === "image" && (
+            <button className="btn btn-primary" onClick={() => onCopyImage(item.url)}>
+              <Icon name="copyimage" />
+              Copy image
+            </button>
+          )}
+          <button className="btn lightbox-close" onClick={onClose} title="Close (Esc)">
+            <Icon name="x" size={12} />
+            Close
           </button>
-        )}
-        <span className="lightbox-caption">
-          {item.caption}
-          {items.length > 1 && ` (${index + 1} of ${items.length})`}
-        </span>
-        {items.length > 1 && (
-          <button className="btn" onClick={() => step(1)}>
-            Next
-          </button>
-        )}
-        <button className="btn" onClick={onClose}>
-          Close
-        </button>
+        </div>
       </footer>
     </div>
   );
@@ -128,14 +204,11 @@ function VersionFields({ value, onChange, presets, showChanges }: { value: NewVe
       <div className="field-row">
         {isVideo && (
           <Field label="Mode">
-            <Choice value={value.mode ?? ""} options={model?.modes ?? ["text", "frames", "ingredients"]} onChange={(mode) => set({ mode })} />
+            <Choice value={value.mode ?? ""} options={model?.modes ?? ["frames", "ingredients"]} onChange={(mode) => set({ mode })} />
           </Field>
         )}
         <Field label="Aspect ratio">
           <Choice value={value.aspect_ratio ?? ""} options={section?.aspect_ratios} onChange={(aspect_ratio) => set({ aspect_ratio })} />
-        </Field>
-        <Field label="Outputs">
-          <Choice value={value.outputs ?? ""} options={section?.outputs?.map(String)} onChange={(outputs) => set({ outputs })} />
         </Field>
         {isVideo && (
           <Field label="Length">
@@ -202,7 +275,6 @@ export function NewVersionDialog({ slot, presets, onCreate, onClose }: { slot: S
           model: latest.meta.model ?? "",
           mode: latest.meta.mode ?? "",
           aspect_ratio: latest.meta.aspect_ratio ?? "",
-          outputs: latest.meta.outputs ?? "",
           duration: latest.meta.duration ?? "",
           resolution: latest.meta.resolution ?? "",
           prompt: latest.prompt,

@@ -47,9 +47,6 @@ export function checkAgainstPreset(
   if (meta.aspect_ratio && section.aspect_ratios && !section.aspect_ratios.includes(meta.aspect_ratio)) {
     warnings.push(`Aspect ratio ${meta.aspect_ratio} is not offered for ${where} (${section.aspect_ratios.join(", ")}).`);
   }
-  if (meta.outputs && section.outputs && !section.outputs.map(String).includes(meta.outputs)) {
-    warnings.push(`Outputs ${meta.outputs} is outside the ${where} range (${section.outputs.join(", ")}).`);
-  }
   if (model) {
     if (meta.mode && model.modes && !model.modes.includes(meta.mode)) {
       warnings.push(`${model.name} does not support mode "${meta.mode}" (${model.modes.join(", ")}).`);
@@ -70,9 +67,9 @@ export function checkAgainstPreset(
   }
   if (meta.type === "video") {
     const has = (role: string) => inputRoles.includes(role);
-    if (meta.mode === "frames" && !has("start_frame")) warnings.push(`Mode "frames" needs an input with role start_frame.`);
+    if (meta.mode === "frames" && has("end_frame") && !has("start_frame")) warnings.push(`Mode "frames" needs a start_frame when it has an end_frame.`);
     if (meta.mode === "ingredients" && !has("ingredient")) warnings.push(`Mode "ingredients" needs at least one input with role ingredient.`);
-    if (meta.mode === "text" && inputRoles.length > 0) warnings.push(`Mode "text" takes no inputs, but this version lists ${inputRoles.length}.`);
+    if (meta.mode === "text") warnings.push(`Flow has no "text" mode; use "frames" with no start_frame for a video from the prompt alone.`);
     if ((has("start_frame") || has("end_frame")) && has("ingredient")) warnings.push("Frames and ingredients cannot be combined in one generation.");
   }
   if (preset.prompt_limit !== null && promptLength > preset.prompt_limit) {

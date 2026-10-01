@@ -1,27 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { AppState, Slot, Status, Version } from "../shared/types";
-import { Lightbox, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
-import { type Ctx, type LightboxItem, SlotCard } from "./SlotCard";
-import { STATUS_LABEL, beep, call, copyText, enc, onboardingMessage, slotUrl, versionUrl } from "./lib";
+import { Lightbox, Modal, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
+import doneArt from "./art/empty-done.png";
+import progressArt from "./art/empty-in-progress.png";
+import { copiedKey, markPromptCopied } from "./copied";
+import { AppContext, type Ctx, type LightboxItem } from "./context";
+import { DoneTile, VariantsList, finalResult } from "./Done";
+import { readStored, writeStored } from "./hooks";
+import { Icon, Logo } from "./icons";
+import { STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
+import { ProjectMenu } from "./ProjectMenu";
+import { STATUS_ICON } from "./shared";
+import { SlotCard } from "./SlotCard";
+import { type Tab, ViewSettings, useViewSettings } from "./ViewSettings";
 
 type Filter = Status | "all";
-const FILTERS: Filter[] = ["all", "waiting_generation", "waiting_review", "waiting_agent", "approved"];
-
-const stored = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const store = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Private windows may refuse storage; the choice then lasts for this visit only.
-  }
-};
+/** Filters inside the In progress tab; approved slots live in the Done tab. */
+const FILTERS: Filter[] = ["all", "waiting_generation", "waiting_agent", "waiting_review", "waiting_input"];
 
 type Dialog =
   | { kind: "project" }
@@ -29,37 +25,73 @@ type Dialog =
   | { kind: "version"; slot: Slot }
   | { kind: "prompt"; slot: Slot; version: Version }
   | { kind: "lightbox"; items: LightboxItem[]; index: number }
+  | { kind: "instructions" }
   | null;
+
+/** The pixel-art pictures for empty views, made in the asset-prompter-brand project. */
+function EmptyArt({ done = false }: { done?: boolean }) {
+  return <img className="empty-art" src={done ? doneArt : progressArt} alt="" width={240} />;
+}
+
+/** Placeholder cards or tiles in the shape of the view, shown while a project's slots load. */
+function LoadingSlots({ tab, perRow }: { tab: Tab; perRow: number }) {
+  if (tab === "done") {
+    return (
+      <div className="done-grid" style={{ "--per-row": perRow } as React.CSSProperties} aria-busy="true" aria-label="Loading">
+        {Array.from({ length: perRow }, (_, i) => (
+          <div key={i} className="tile skeleton-tile">
+            <div className="tile-media skeleton" />
+            <div className="tile-bar">
+              <span className="skeleton skeleton-line" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <div key={i} className="card skeleton-card" aria-busy="true" aria-label="Loading">
+          <div className="card-head">
+            <span className="skeleton skeleton-line" />
+          </div>
+          <div className="version-body">
+            <div className="skeleton skeleton-media" />
+            <div className="skeleton-info">
+              <span className="skeleton skeleton-line is-long" />
+              <span className="skeleton skeleton-line is-long" />
+              <span className="skeleton skeleton-line" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 function App() {
   const [state, setState] = useState<AppState | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(stored("project"));
+  const [projectId, setProjectId] = useState<string | null>(readStored("project"));
   const [slots, setSlots] = useState<Slot[] | null>(null);
+  /** How many agents are waiting on this project's /wait, ready to be woken by Notify agent. */
+  const [listening, setListening] = useState(0);
   const [filter, setFilter] = useState<Filter>("all");
+  const [tab, setTab] = useState<Tab>(readStored("tab") === "done" ? "done" : "progress");
+  const view = useViewSettings(tab);
+  const { width, perRow, compact } = view;
+  /** The Done slot shown in full in a dialog; kept apart from `dialog` so a lightbox can open on top of it. */
+  const [detail, setDetail] = useState<string | null>(null);
+  /** The slot whose variants are shown; like `detail`, kept apart so a lightbox can open on top. */
+  const [variantsOf, setVariantsOf] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sound, setSound] = useState(stored("sound") !== "off");
+  const [sound, setSound] = useState(readStored("sound") !== "off");
   const [toast, setToast] = useState<{ message: string; isError: boolean; id: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const pasteTarget = useRef<{ slot: string; n: number } | null>(null);
   const lastPending = useRef<number | null>(null);
   const soundRef = useRef(sound);
   soundRef.current = sound;
-  const workspaceRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (!workspaceRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
 
   const project = state?.projects.find((p) => p.id === projectId) ?? state?.projects[0] ?? null;
   const currentId = project?.id ?? null;
@@ -74,10 +106,9 @@ function App() {
   const refresh = useCallback(async () => {
     try {
       const next = await call<AppState>("GET", "/api/state");
-      const pending = next.projects.reduce((sum, p) => sum + p.counts.waiting_generation, 0);
+      const pending = next.projects.reduce((sum, p) => sum + humanTurn(p.counts), 0);
       if (lastPending.current !== null && pending > lastPending.current && soundRef.current) beep();
       lastPending.current = pending;
-      document.title = pending > 0 ? `(${pending}) Asset Prompter` : "Asset Prompter";
       setState(next);
       setLoadError(null);
     } catch (e) {
@@ -88,7 +119,9 @@ function App() {
   const refreshSlots = useCallback(async () => {
     if (!currentId) return setSlots(null);
     try {
-      setSlots((await call<{ slots: Slot[] }>("GET", `/api/projects/${enc(currentId)}`)).slots);
+      const data = await call<{ slots: Slot[]; listening: number }>("GET", `/api/projects/${enc(currentId)}`);
+      setSlots(data.slots);
+      setListening(data.listening);
     } catch (e) {
       showToast((e as Error).message, true);
     }
@@ -133,7 +166,7 @@ function App() {
       if (!currentId || files.length === 0) return;
       const form = new FormData();
       for (const file of files) form.append("files", file);
-      act(() => call("POST", `${versionUrl(currentId, slot, n)}/candidates`, form), `${files.length === 1 ? "Result" : `${files.length} results`} added to ${slot} v${n}`);
+      act(() => call("POST", `${versionUrl(currentId, slot, n)}/results`, form), `${files.length === 1 ? "Result" : `${files.length} results`} added to ${slot} v${n}`);
     },
     [act, currentId],
   );
@@ -161,6 +194,7 @@ function App() {
         openLightbox: (items, index) => setDialog({ kind: "lightbox", items, index }),
         openPrompt: (slot, version) => setDialog({ kind: "prompt", slot, version }),
         openNewVersion: (slot) => setDialog({ kind: "version", slot }),
+        openVariants: (slot) => setVariantsOf(slot.name),
         setPasteTarget: (target) => (pasteTarget.current = target),
       },
     [project, act, showToast, upload],
@@ -168,58 +202,57 @@ function App() {
 
   const chooseProject = (id: string) => {
     setProjectId(id);
-    store("project", id);
-    setMenuOpen(false);
+    writeStored("project", id);
     setFilter("all");
+    setDetail(null);
   };
+  const chooseTab = (t: Tab) => {
+    setTab(t);
+    writeStored("tab", t);
+  };
+
+  // The tab title counts what is in progress in the open project.
+  const openCount = (slots ?? []).filter((s) => s.status !== "approved").length;
+  useEffect(() => {
+    document.title = openCount > 0 ? `(${openCount}) Asset Prompter` : "Asset Prompter";
+  }, [openCount]);
 
   if (!state) return <main className="blank">{loadError ? `Cannot reach the app server: ${loadError}` : "Loading"}</main>;
 
-  const visible = (slots ?? []).filter((s) => filter === "all" || s.status === filter);
-  const count = (f: Filter) => (f === "all" ? (slots?.length ?? 0) : (slots ?? []).filter((s) => s.status === f).length);
+  const inProgress = (slots ?? []).filter((s) => s.status !== "approved");
+  const done = (slots ?? []).filter((s) => s.status === "approved");
+  const visible = inProgress.filter((s) => filter === "all" || s.status === filter);
+  const count = (f: Filter) => (f === "all" ? inProgress.length : inProgress.filter((s) => s.status === f).length);
+  const doneItems: LightboxItem[] = done.flatMap((s) => {
+    const final = finalResult(s);
+    return final ? [{ url: final.url, kind: final.kind, caption: `${s.name} v${s.approved}` }] : [];
+  });
+  const detailSlot = detail ? (slots ?? []).find((s) => s.name === detail) : undefined;
+  const variantsSlot = variantsOf ? (slots ?? []).find((s) => s.name === variantsOf && s.variants.length > 0) : undefined;
   const close = () => setDialog(null);
 
   return (
-    <>
+    <AppContext.Provider value={ctx}>
       <header className="topbar">
-        <div className="brand">Asset Prompter</div>
-        <div className="workspace" ref={workspaceRef}>
-          <button className="btn workspace-button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen}>
-            <span>{project ? project.name : "No project"}</span>
-            <span className="workspace-caret">{menuOpen ? "▴" : "▾"}</span>
-          </button>
-          {menuOpen && (
-            <div className="menu">
-              {state.projects.map((p) => (
-                <button key={p.id} className={`menu-item${p.id === currentId ? " is-current" : ""}`} onClick={() => chooseProject(p.id)}>
-                  <span className="menu-name">{p.name}</span>
-                  {p.external && (
-                    <span className="menu-path" title={p.path}>
-                      {p.path}
-                    </span>
-                  )}
-                  {p.counts.waiting_generation > 0 && <span className="badge">{p.counts.waiting_generation}</span>}
-                </button>
-              ))}
-              <button
-                className="menu-item menu-add"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setDialog({ kind: "project" });
-                }}
-              >
-                Add a project
-              </button>
-            </div>
-          )}
+        <div className="brand">
+          <Logo size={24} />
+          <span className="brand-name">Asset Prompter</span>
         </div>
+        <ProjectMenu projects={state.projects} project={project} onChoose={chooseProject} onAdd={() => setDialog({ kind: "project" })} />
         {project && (
           <>
-            <button className="btn" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
-              Copy agent instructions
-            </button>
-            <button className="link" onClick={() => act(() => call("POST", "/api/open", { path: project.path }))}>
-              Open folder
+            <div className="split">
+              <button className="btn split-main" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
+                <Icon name="robot" />
+                Copy agent instructions
+              </button>
+              <button className="btn split-side" onClick={() => setDialog({ kind: "instructions" })} title="Show what gets copied">
+                View
+              </button>
+            </div>
+            <button className="link link-icon" onClick={() => act(() => call("POST", "/api/open", { path: project.path }))} title="Open the project folder">
+              <Icon name="folder" />
+              <span className="narrow-hide">Open folder</span>
             </button>
           </>
         )}
@@ -228,16 +261,19 @@ function App() {
             className={`toggle${sound ? " is-on" : ""}`}
             role="switch"
             aria-checked={sound}
+            title={sound ? "Sound on" : "Sound off"}
             onClick={() => {
-              store("sound", sound ? "off" : "on");
+              writeStored("sound", sound ? "off" : "on");
               setSound(!sound);
               if (!sound) beep();
             }}
           >
-            Sound {sound ? "on" : "off"}
+            <Icon name={sound ? "speaker" : "mute"} />
+            <span className="narrow-hide">Sound {sound ? "on" : "off"}</span>
           </button>
           {project && (
             <button className="btn btn-primary" onClick={() => setDialog({ kind: "slot" })}>
+              <Icon name="plus" />
               New slot
             </button>
           )}
@@ -245,19 +281,71 @@ function App() {
       </header>
 
       {project && (
+        <nav className="tabs" aria-label="Views">
+          <button className={`tab${tab === "progress" ? " is-on" : ""}`} onClick={() => chooseTab("progress")}>
+            <Icon name="hourglass" />
+            In progress <span className={`filter-count${inProgress.length > 0 ? " is-hot" : ""}`}>{inProgress.length}</span>
+          </button>
+          <button className={`tab${tab === "done" ? " is-on" : ""}`} onClick={() => chooseTab("done")}>
+            <Icon name="star" />
+            Done <span className="filter-count">{done.length}</span>
+          </button>
+          <ViewSettings tab={tab} view={view} />
+        </nav>
+      )}
+
+      {project && tab === "progress" && (
         <nav className="filters" aria-label="Filter slots">
           {FILTERS.map((f) => (
             <button key={f} className={`filter filter-${f}${filter === f ? " is-on" : ""}`} onClick={() => setFilter(f)}>
+              {f === "all" ? <Icon name="grid" size={12} /> : <Icon name={STATUS_ICON[f]} size={12} />}
               {f === "all" ? "All" : STATUS_LABEL[f]}
               <span className="filter-count">{count(f)}</span>
             </button>
           ))}
+          <div className="filters-actions">
+          <button
+            className={`btn notify${listening ? " is-listening" : ""}`}
+            disabled={count("waiting_agent") === 0}
+            onClick={() =>
+              act(async () => {
+                const r = await call<{ delivered: boolean }>("POST", `/api/projects/${enc(project.id)}/notify`);
+                showToast(r.delivered ? "Agent notified" : "The agent is not waiting right now. It gets this as soon as it starts waiting, or tell it \"done\" in the chat.", !r.delivered);
+              })
+            }
+            title={
+              listening
+                ? "The agent is waiting. Press to send it every slot where it is its turn."
+                : "The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md."
+            }
+          >
+            <Icon name="robot" />
+            Notify agent
+            {count("waiting_agent") > 0 && <span className="filter-count">{count("waiting_agent")}</span>}
+          </button>
+          {count("waiting_review") > 1 && (
+            <button
+              className="btn btn-approve"
+              onClick={() =>
+                act(async () => {
+                  for (const s of (slots ?? []).filter((s) => s.status === "waiting_review")) {
+                    await call("PUT", `${slotUrl(project.id, s.name)}/approval`, { version: s.versions.at(-1)!.n });
+                  }
+                }, `${count("waiting_review")} slots approved`)
+              }
+              title="Approve every slot the agent approved"
+            >
+              Approve all {count("waiting_review")}
+            </button>
+          )}
+          </div>
         </nav>
       )}
 
-      <main className="feed">
+      <main className={`feed${compact && tab === "progress" ? " is-compact" : ""}`} data-width={width}>
         {!project && (
           <div className="blank">
+            <EmptyArt />
             <h1>Start with a project</h1>
             <p>A project is a folder. Your agent writes prompts into it, and you drop the generated images and videos back in.</p>
             <button className="btn btn-primary" onClick={() => setDialog({ kind: "project" })}>
@@ -267,6 +355,7 @@ function App() {
         )}
         {project && slots && slots.length === 0 && (
           <div className="blank">
+            <EmptyArt />
             <h1>No slots in {project.name} yet</h1>
             <p>
               Paste the agent instructions into your agent's chat and it will start writing prompts here. You can also write the first one
@@ -280,20 +369,74 @@ function App() {
             </button>
           </div>
         )}
-        {project && slots && slots.length > 0 && visible.length === 0 && (
-          <div className="blank">
-            <p>No slots with status "{STATUS_LABEL[filter as Status]}".</p>
+        {tab === "progress" && project && slots && slots.length > 0 && visible.length === 0 && (
+          <div className="blank blank-center">
+            <EmptyArt />
+            <p>{filter === "all" ? "Nothing in progress. Approved assets are in Done." : `Nothing here: no slot is "${STATUS_LABEL[filter as Status]}".`}</p>
           </div>
         )}
-        {ctx && visible.map((slot) => <SlotCard key={slot.name} slot={slot} ctx={ctx} />)}
+        {project && !slots && <LoadingSlots tab={tab} perRow={perRow} />}
+        {tab === "progress" && ctx && visible.map((slot) => <SlotCard key={slot.name} slot={slot} />)}
+        {tab === "done" && project && slots && slots.length > 0 && done.length === 0 && (
+          <div className="blank blank-center">
+            <EmptyArt done />
+            <p>Nothing approved yet. Approved assets show up here.</p>
+          </div>
+        )}
+        {tab === "done" && ctx && done.length > 0 && (
+          <div className={`done-grid${compact ? " is-compact" : ""}`} style={{ "--per-row": perRow } as React.CSSProperties}>
+            {done.map((slot) => (
+              <DoneTile
+                key={slot.name}
+                slot={slot}
+                onOpen={() => {
+                  const i = doneItems.findIndex((item) => item.caption === `${slot.name} v${slot.approved}`);
+                  if (i >= 0) setDialog({ kind: "lightbox", items: doneItems, index: i });
+                }}
+                onDetails={() => setDetail(slot.name)}
+              />
+            ))}
+          </div>
+        )}
         {!state.ffmpeg && project && (
           <p className="footnote">ffmpeg is not installed, so videos get no frame sheets and an agent cannot review them.</p>
         )}
       </main>
 
-      {dialog?.kind === "lightbox" && <Lightbox items={dialog.items} start={dialog.index} onClose={close} />}
+      {detailSlot && ctx && (
+        <Modal title={detailSlot.name} onClose={() => setDetail(null)} wide>
+          <div className="detail-body">
+            <SlotCard slot={detailSlot} collapsible={false} />
+          </div>
+        </Modal>
+      )}
+      {variantsSlot && ctx && (
+        <Modal title={`${variantsSlot.name}: ${variantsSlot.variants.length} ${variantsSlot.variants.length === 1 ? "variant" : "variants"}`} onClose={() => setVariantsOf(null)} wide>
+          <VariantsList slot={variantsSlot} />
+        </Modal>
+      )}
+      {dialog?.kind === "instructions" && project && (
+        <Modal title="Agent instructions" onClose={close} wide>
+          <pre className="prompt-full">{onboardingMessage(project.path)}</pre>
+          <footer className="modal-foot">
+            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
+              <Icon name="copy" />
+              Copy
+            </button>
+            <span className="prompt-count">Paste it into a new chat with your agent.</span>
+          </footer>
+        </Modal>
+      )}
+      {dialog?.kind === "lightbox" && (
+        <Lightbox items={dialog.items} start={dialog.index} onClose={close} onCopyImage={(url) => act(() => copyImage(url), "Image copied")} />
+      )}
       {dialog?.kind === "prompt" && (
-        <PromptDialog slot={dialog.slot} version={dialog.version} onClose={close} onCopy={() => act(() => copyText(dialog.version.prompt), "Prompt copied")} />
+        <PromptDialog slot={dialog.slot} version={dialog.version} onClose={close} onCopy={() =>
+            act(async () => {
+              await copyText(dialog.version.prompt);
+              if (project) markPromptCopied(copiedKey(project.id, dialog.slot.name, dialog.version.n), dialog.version.prompt);
+            }, "Prompt copied")
+          } />
       )}
       {dialog?.kind === "project" && (
         <NewProjectDialog
@@ -340,7 +483,7 @@ function App() {
           {toast.message}
         </div>
       )}
-    </>
+    </AppContext.Provider>
   );
 }
 

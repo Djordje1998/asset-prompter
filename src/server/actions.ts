@@ -7,11 +7,13 @@ import {
   SELECTED_FILE,
   TRASH_DIR,
   framesDirOf,
-  listCandidateFiles,
+  listResultFiles,
   listVersionNumbers,
   mediaKind,
+  mediaKindOfExt,
   readApproved,
-  selectedCandidate,
+  SLOT_NAME,
+  selection,
 } from "./store";
 
 export class UserError extends Error {}
@@ -30,6 +32,13 @@ export function slugName(value: unknown, what: string): string {
   return s;
 }
 
+/** Slots made in the app follow the same naming rule HOW-TO-USE.md gives agents; project names stay looser. */
+export function slotName(value: unknown): string {
+  const s = slugName(value, "Slot name");
+  if (!SLOT_NAME.test(s)) throw new UserError(`Slot name "${s}" can only use lowercase letters, digits and single hyphens between them, like hero-banner.`);
+  return s;
+}
+
 const MIME_EXT: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -45,7 +54,17 @@ function trash(projectDir: string, source: string, label: string): void {
   const dir = join(projectDir, TRASH_DIR);
   mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  renameSync(source, join(dir, `${stamp}_${label}`));
+  try {
+    renameSync(source, join(dir, `${stamp}_${label}`));
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "EBUSY" || code === "EPERM" || code === "EACCES") {
+      throw new UserError(
+        `${basename(source)} is open in another program (a File Explorer window, a terminal, an editor or a media player). Close it there and try again.`,
+      );
+    }
+    throw e;
+  }
 }
 
 export function createSlot(projectDir: string, name: string, description: string, version: NewVersionInput): void {
@@ -70,9 +89,9 @@ export function addVersion(projectDir: string, slot: string, input: NewVersionIn
   if (input.type !== "image" && input.type !== "video") throw new UserError("Type must be image or video.");
   const n = (listVersionNumbers(slotDir).at(-1) ?? 0) + 1;
   const data: Record<string, unknown> = {};
-  for (const key of ["tool", "type", "model", "mode", "aspect_ratio", "outputs", "duration", "resolution", "changes"] as const) {
+  for (const key of ["tool", "type", "model", "mode", "aspect_ratio", "duration", "resolution", "changes"] as const) {
     const value = input[key]?.toString().trim();
-    if (value) data[key] = key === "outputs" && /^\d+$/.test(value) ? Number(value) : value;
+    if (value) data[key] = value;
   }
   if (input.carryFrom && existsSync(join(slotDir, `v${input.carryFrom}.md`))) {
     const previous = parseDoc(readFileSync(join(slotDir, `v${input.carryFrom}.md`), "utf8")).data;
@@ -90,18 +109,16 @@ function versionDir(projectDir: string, slot: string, n: number): string {
   return join(slotDir, `v${n}`);
 }
 
-export async function addCandidates(projectDir: string, slot: string, n: number, files: File[]): Promise<string[]> {
+export async function addResults(projectDir: string, slot: string, n: number, files: File[]): Promise<string[]> {
   const dir = versionDir(projectDir, slot, n);
   const named = files.map((file) => {
     const ext = (extname(file.name) || MIME_EXT[file.type] || "").toLowerCase();
-    if (!mediaKind(`x${ext}`)) throw new UserError(`"${file.name}" is not an image or video this app can show.`);
+    if (!mediaKindOfExt(ext)) throw new UserError(`"${file.name}" is not an image or video this app can show.`);
     return { file, ext };
   });
   mkdirSync(dir, { recursive: true });
-  // A lone candidate is selected implicitly; keep that choice once it has company.
-  const before = listCandidateFiles(dir);
-  if (before.length === 1 && !existsSync(join(dir, SELECTED_FILE))) writeFileSync(join(dir, SELECTED_FILE), before[0] + "\n");
-  let next =Math.max(0, ...listCandidateFiles(dir).map((f) => parseInt(f, 10) || 0)) + 1;
+  // No pick is written here: with several results the agent picks, unless the human does.
+  let next = Math.max(0, ...listResultFiles(dir).map((f) => parseInt(f, 10) || 0)) + 1;
   const written: string[] = [];
   for (const { file, ext } of named) {
     const name = `${next++}${ext}`;
@@ -112,23 +129,26 @@ export async function addCandidates(projectDir: string, slot: string, n: number,
   return written;
 }
 
-export function deleteCandidate(projectDir: string, slot: string, n: number, file: string): void {
+export function deleteResult(projectDir: string, slot: string, n: number, file: string): void {
   const dir = versionDir(projectDir, slot, n);
   const path = join(dir, file);
   if (!existsSync(path) || !mediaKind(file)) throw new UserError(`${file} does not exist in ${slot} v${n}.`);
   trash(projectDir, path, `${slot}_v${n}_${file}`);
   rmSync(framesDirOf(path), { recursive: true, force: true });
+  // A pick of a removed file would only mislead the agent.
+  const picked = join(dir, SELECTED_FILE);
+  if (existsSync(picked) && readFileSync(picked, "utf8").trim() === file) unlinkSync(picked);
   syncFinal(projectDir, slot);
 }
 
 export function setSelected(projectDir: string, slot: string, n: number, file: string): void {
   const dir = versionDir(projectDir, slot, n);
-  if (!listCandidateFiles(dir).includes(file)) throw new UserError(`${file} does not exist in ${slot} v${n}.`);
+  if (!listResultFiles(dir).includes(file)) throw new UserError(`${file} does not exist in ${slot} v${n}.`);
   writeFileSync(join(dir, SELECTED_FILE), file + "\n");
   syncFinal(projectDir, slot);
 }
 
-export function setFeedback(projectDir: string, slot: string, n: number, text: string): void {
+export function setChangeRequest(projectDir: string, slot: string, n: number, text: string): void {
   versionDir(projectDir, slot, n);
   const path = join(projectDir, slot, `v${n}.feedback.md`);
   if (text.trim()) writeFileSync(path, text.trim() + "\n");
@@ -142,20 +162,23 @@ export function setApproval(projectDir: string, slot: string, n: number | null):
     if (existsSync(marker)) unlinkSync(marker);
   } else {
     const dir = versionDir(projectDir, slot, n);
-    if (!selectedCandidate(dir)) {
-      throw new UserError(listCandidateFiles(dir).length ? "Select one candidate before approving." : "There is nothing to approve yet.");
+    const chosen = selection(dir);
+    if (!chosen.file) {
+      throw new UserError(listResultFiles(dir).length ? "Select one candidate before approving." : "There is nothing to approve yet.");
     }
+    // Approving the agent's pick makes it the human's pick, so a later review cannot change the final file.
+    if (chosen.by === "agent") writeFileSync(join(dir, SELECTED_FILE), chosen.file + "\n");
     writeFileSync(marker, `v${n}\n`);
   }
   syncFinal(projectDir, slot);
 }
 
-/** Keeps final.<ext> equal to the approved version's selected candidate, and drops the approval if that is gone. */
+/** Keeps final.<ext> equal to the approved version's selected result, and drops the approval if that is gone. */
 export function syncFinal(projectDir: string, slot: string): void {
   const slotDir = join(projectDir, slot);
   const approved = readApproved(slotDir);
   const dir = approved === null ? null : join(slotDir, `v${approved}`);
-  const chosen = dir ? selectedCandidate(dir) : null;
+  const chosen = dir ? selection(dir).file : null;
   const target = chosen ? `final${extname(chosen).toLowerCase()}` : null;
   for (const f of readdirSync(slotDir)) {
     if (/^final\.[^.]+$/.test(f) && f !== target) unlinkSync(join(slotDir, f));
@@ -168,22 +191,4 @@ export function trashSlot(projectDir: string, slot: string): void {
   const slotDir = join(projectDir, slot);
   if (!existsSync(slotDir)) throw new UserError(`Slot "${slot}" does not exist.`);
   trash(projectDir, slotDir, basename(slotDir));
-}
-
-/** One 2x2 sheet per second of video, frames 250 ms apart, so an agent can review motion from stills. */
-export async function extractFrames(video: string): Promise<void> {
-  const ffmpeg = Bun.which("ffmpeg");
-  if (!ffmpeg) return;
-  const dir = framesDirOf(video);
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  const filter = "fps=4,scale='if(gt(iw,ih),640,-2)':'if(gt(iw,ih),-2,640)',tile=2x2";
-  const proc = Bun.spawn([ffmpeg, "-y", "-loglevel", "error", "-i", video, "-vf", filter, "-q:v", "4", join(dir, "%03d.jpg")], {
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  if ((await proc.exited) !== 0) {
-    console.warn(`ffmpeg could not extract frames from ${video}: ${await new Response(proc.stderr).text()}`);
-    rmSync(dir, { recursive: true, force: true });
-  }
 }
