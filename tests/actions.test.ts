@@ -2,8 +2,9 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cloneName } from "../src/shared/names";
+import { listProjects } from "../src/server/projects";
 import { scanProject } from "../src/server/store";
-import { addResults, addVersion, cloneSlot, createSlot, deleteResult, restoreResult, restoreSlot, setApproval, setChangeRequest, setSelected, slotName, slugName, trashSlot } from "../src/server/actions";
+import { addResults, addVersion, cloneSlot, createSlot, deleteResult, listTrash, restoreProject, restoreResult, restoreSlot, restoreTrashed, setApproval, setChangeRequest, setSelected, slotName, slugName, trashProject, trashSlot } from "../src/server/actions";
 import { findSlot, image, png, presets, tempProject, writeReview } from "./helpers";
 
 const root = tempProject();
@@ -277,4 +278,40 @@ test("the human's pick can be taken back, except on the approved version", async
   setApproval(root(), "hero", 1);
   expect(() => setSelected(root(), "hero", 1, null)).toThrow("v1 is approved with this pick. Remove the approval first.");
   expect(readFileSync(hero("v1", "selected.txt"), "utf8")).toBe("1.png\n");
+});
+
+test("a deleted project goes to _trash, leaves the list, and comes back on undo", () => {
+  const projects = root();
+  const dir = join(projects, "shop");
+  createSlot(dir, "hero", "", image);
+  expect(listProjects(projects, []).map((p) => p.name)).toContain("shop");
+
+  const trashed = trashProject(projects, dir);
+  expect(existsSync(dir)).toBe(false);
+  expect(existsSync(join(trashed, "hero", "v1.md"))).toBe(true);
+  expect(listProjects(projects, []).map((p) => p.name)).not.toContain("shop");
+
+  restoreProject(dir, trashed);
+  expect(existsSync(join(dir, "hero", "v1.md"))).toBe(true);
+  expect(listProjects(projects, []).map((p) => p.name)).toContain("shop");
+});
+
+test("the trash lists removed slots and results, and puts each back where it came from", async () => {
+  createSlot(root(), "hero", "", image);
+  createSlot(root(), "logo", "", image);
+  await addResults(root(), "hero", 1, [png("a.png"), png("b.png")]);
+  deleteResult(root(), "hero", 1, "2.png");
+  trashSlot(root(), "logo");
+
+  const items = listTrash(join(root(), "_trash"), false);
+  expect(items.map((i) => [i.kind, i.name, i.slot ?? null, i.version ?? null]).sort()).toEqual([
+    ["result", "2.png", "hero", 1],
+    ["slot", "logo", null, null],
+  ]);
+  expect(items.every((i) => typeof i.trashedAt === "number")).toBe(true);
+
+  for (const item of items) restoreTrashed(root(), item.entry);
+  expect(existsSync(join(root(), "logo", "v1.md"))).toBe(true);
+  expect(existsSync(hero("v1", "2.png"))).toBe(true);
+  expect(listTrash(join(root(), "_trash"), false)).toEqual([]);
 });

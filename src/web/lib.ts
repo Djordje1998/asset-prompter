@@ -99,6 +99,34 @@ export function onboardingMessage(projectPath: string): string {
   ].join("\n");
 }
 
+const WHEN = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** "just now", "5 minutes ago", "3 days ago". */
+export function timeAgo(ms: number, now = Date.now()): string {
+  const s = Math.max(0, (now - ms) / 1000);
+  const steps: [number, string][] = [
+    [60, "second"],
+    [60, "minute"],
+    [24, "hour"],
+    [30, "day"],
+    [12, "month"],
+    [Infinity, "year"],
+  ];
+  if (s < 45) return "just now";
+  let n = s;
+  for (const [size, unit] of steps) {
+    if (n < size) {
+      const r = Math.max(1, Math.round(n));
+      return `${r} ${unit}${r === 1 ? "" : "s"} ago`;
+    }
+    n /= size;
+  }
+  return "";
+}
+
+/** Hover text for a slot's number: when it was made, as a date and as time ago. */
+export const createdLabel = (number: number, ms: number) => `Slot #${number}, created ${WHEN.format(ms)} (${timeAgo(ms)})`;
+
 export const formatBytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 export function beep(): void {

@@ -32,6 +32,8 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
   const base = versionUrl(ctx.project.id, slot.name, version.n);
   const needsPick = results.length > 1 && !version.selected;
   const wanted: "image" | "video" = version.meta.type === "video" ? "video" : "image";
+  // Its inputs are not approved yet, so generating now would build on a draft.
+  const blocked = slot.status === "waiting_input" && version === slot.versions.at(-1);
 
   const paste = async () => {
     try {
@@ -157,6 +159,22 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             </div>
           </div>
         </>
+      ) : blocked ? (
+        <div className="mediabox-empty-area is-blocked">
+          <div className="mediabox-empty">
+            <span className="mediabox-icon">
+              <Icon name="lock" size={20} />
+            </span>
+            <strong>Waiting for {slot.waitingFor.join(", ")}</strong>
+            <span>
+              Generate this after {slot.waitingFor.length === 1 ? "that slot is" : "those slots are"} approved: its result goes in as{" "}
+              {slot.waitingFor.length === 1 ? "an input" : "inputs"} here.
+            </span>
+          </div>
+          <button className="link" onClick={() => picker.current?.click()}>
+            Add a {wanted} anyway
+          </button>
+        </div>
       ) : (
         <div className="mediabox-empty-area">
           <button className="mediabox-empty" onClick={() => picker.current?.click()}>
@@ -319,6 +337,7 @@ function InputTile({ input }: { input: ResolvedInput }) {
       {input.url && input.kind ? (
         <button
           className="input-thumb"
+          aria-label={`View the ${label.toLowerCase()}`}
           onClick={() =>
             ctx.openLightbox(
               [{ url: input.url!, kind: input.kind!, title: input.fromSlot ? input.source : name, version: input.sourceVersion ?? undefined, tags: [label], file: input.fromSlot ? undefined : input.source }],

@@ -284,3 +284,17 @@ test("media kind comes from the extension alone, in any case, and needs the dot"
 function slot_meta() {
   return { tool: null, type: null, model: null, mode: null, aspect_ratio: null, duration: null, resolution: null, changes: null, params: {} };
 }
+
+test("slots are numbered by age, the oldest is 1", () => {
+  for (const [name, secondsAgo] of [["middle", 200], ["newest", 100], ["oldest", 300]] as const) {
+    createSlot(root, name, "", image);
+    const t = new Date(Date.now() - secondsAgo * 1000);
+    utimesSync(join(root, name, "v1.md"), t, t);
+  }
+  const slots = scanProject("p", root, presets);
+  expect(slots.map((s) => [s.name, s.number])).toEqual([
+    ["newest", 3],
+    ["middle", 2],
+    ["oldest", 1],
+  ]);
+});

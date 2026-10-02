@@ -1,8 +1,11 @@
+import { useEffect, useRef } from "react";
 import type { Result, Slot } from "../shared/types";
 import { type LightboxItem, useApp } from "./context";
+import { useEscape } from "./hooks";
 import { Icon } from "./icons";
 import { copyImage, copyText } from "./lib";
-import { CopyImageButton, Media, describe } from "./shared";
+import { CopyImageButton, Media, SlotNumber, describe } from "./shared";
+import { SlotCard } from "./SlotCard";
 
 /** The approved result of a slot, as shown in the Done grid. */
 export function finalResult(slot: Slot): Result | null {
@@ -74,6 +77,7 @@ export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () =
       {final?.kind === "image" && <CopyImageButton url={final.url} />}
       {slot.variants.length > 0 && <VariantsBadge slot={slot} />}
       <div className="tile-bar">
+        <SlotNumber slot={slot} />
         {/* The name is what people copy most, so clicking it copies it. */}
         <button className="tile-name" title={`${slot.name}: click to copy`} onClick={() => ctx.act(() => copyText(slot.name), `Slot name "${slot.name}" copied to the clipboard`)}>
           {slot.name}
@@ -84,5 +88,79 @@ export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () =
         </button>
       </div>
     </article>
+  );
+}
+
+const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+
+/**
+ * Details of a Done slot: the slot card is the dialog itself, and below it a panel pages through every
+ * Done slot, with arrows above a strip of all of them, the current one marked.
+ */
+export function DetailDialog({ slots, slot, onShow, onClose, paused }: { slots: Slot[]; slot: Slot; onShow: (name: string) => void; onClose: () => void; paused: boolean }) {
+  const index = slots.findIndex((s) => s.name === slot.name);
+  const many = index >= 0 && slots.length > 1;
+  const step = (d: number) => many && onShow(slots[(index + d + slots.length) % slots.length]!.name);
+  const strip = useRef<HTMLDivElement>(null);
+  useEscape(onClose);
+  useEffect(() => {
+    if (!many || paused) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (typing(e.target) || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  useEffect(() => {
+    // Scrolled by hand: scrollIntoView would also move the page, and overshoots at the ends of the strip.
+    const bar = strip.current;
+    const item = bar?.querySelector<HTMLElement>(".is-current");
+    if (bar && item) bar.scrollTo({ left: item.offsetLeft + item.offsetWidth / 2 - bar.clientWidth / 2, behavior: "smooth" });
+  }, [slot.name]);
+  const outside = (e: React.MouseEvent) => e.target === e.currentTarget && onClose();
+  return (
+    <div className="overlay detail-overlay" onMouseDown={outside}>
+      <div className="detail-view" role="dialog" aria-label={`Details ${slot.name}`} onMouseDown={outside}>
+        <SlotCard key={slot.name} slot={slot} collapsible={false} onClose={onClose} single />
+        {many && (
+          <nav className="detail-dock" aria-label="All done slots">
+            <div className="detail-nav">
+              <button className="btn btn-small lightbox-step" onClick={() => step(-1)} aria-label="Previous" title="Previous (Left arrow)">
+                <Icon name="chevron" className="flip" />
+              </button>
+              <span className="lightbox-count">
+                {index + 1} / {slots.length}
+              </span>
+              <button className="btn btn-small lightbox-step" onClick={() => step(1)} aria-label="Next" title="Next (Right arrow)">
+                <Icon name="chevron" />
+              </button>
+            </div>
+            <div className="detail-strip" ref={strip} role="tablist">
+              {slots.map((s) => {
+                const final = finalResult(s);
+                const current = s.name === slot.name;
+                return (
+                  <button
+                    key={s.name}
+                    role="tab"
+                    aria-selected={current}
+                    className={`lightbox-thumb${current ? " is-current" : ""}`}
+                    onClick={() => onShow(s.name)}
+                    title={`#${s.number} ${s.name}${current ? ", showing now" : ""}`}
+                  >
+                    <span className="lightbox-thumb-media">
+                      {final && (final.kind === "video" ? <video src={`${final.url}#t=0.1`} muted preload="metadata" /> : <img src={final.url} alt="" loading="lazy" />)}
+                    </span>
+                    <span className="lightbox-thumb-name">{s.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+      </div>
+    </div>
   );
 }

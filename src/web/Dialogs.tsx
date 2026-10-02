@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import type { NewVersionInput, Preset, Slot, Version } from "../shared/types";
+import type { NewVersionInput, Preset, ProjectSummary, Slot, TrashItem, Version } from "../shared/types";
 import { cloneName } from "../shared/names";
 import { useEscape } from "./hooks";
 import { Icon } from "./icons";
-import { formatBytes } from "./lib";
+import { call, formatBytes, timeAgo } from "./lib";
 import type { LightboxItem } from "./context";
 
 /**
@@ -50,6 +50,109 @@ export function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+/** Confirms deleting a project: its folder goes to _trash, or, when added from elsewhere, it only leaves the list. */
+export function DeleteProjectDialog({ project, onDelete, onClose }: { project: ProjectSummary; onDelete: () => void; onClose: () => void }) {
+  return (
+    <Modal title={<SlotTitle action={project.external ? "Remove" : "Delete"} slot={project.name} />} label={`Delete ${project.name}`} onClose={onClose}>
+      <div className="form">
+        {project.external ? (
+          <p>
+            The project leaves this list. Its folder stays where it is, with every prompt and result: <code>{project.path}</code>
+          </p>
+        ) : (
+          <p>
+            The project folder, with every slot, prompt and result, moves to <code>projects/_trash</code>. Delete it there for good when you are sure.
+          </p>
+        )}
+        {project.listening > 0 && <p className="field-hint">The agent waiting on it is told to stop.</p>}
+        <footer className="modal-foot">
+          <button className="btn btn-unapprove" onClick={onDelete} autoFocus>
+            <Icon name="trash" size={12} />
+            {project.external ? "Remove from the list" : "Delete project"}
+          </button>
+          <span className="prompt-count">You can undo it right after.</span>
+        </footer>
+      </div>
+    </Modal>
+  );
+}
+
+const TRASH_KIND: Record<TrashItem["kind"], string> = { project: "Project", slot: "Slot", result: "Result", other: "File" };
+
+/** What is in a _trash folder, newest first, each with Restore. `url` lists it. */
+export function TrashDialog({
+  title,
+  url,
+  onRestore,
+  onOpenFolder,
+  onClose,
+}: {
+  title: string;
+  url: string;
+  onRestore: (item: TrashItem) => Promise<void>;
+  onOpenFolder: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<{ items: TrashItem[]; path: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = () =>
+    call<{ items: TrashItem[]; path: string }>("GET", url)
+      .then(setData)
+      .catch((e: Error) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, [url]);
+  return (
+    <Modal title={title} onClose={onClose} wide>
+      <div className="form">
+        {error && <p className="field-hint">{error}</p>}
+        {data && data.items.length === 0 && <p className="trash-empty">Nothing in _trash.</p>}
+        {data && data.items.length > 0 && (
+          <ul className="trash-list">
+            {data.items.map((item) => (
+              <li key={item.entry} className="trash-item">
+                <span className="trash-thumb">
+                  {item.url ? (
+                    /\.(mp4|webm|mov)(\?|$)/i.test(item.url) ? (
+                      <video src={`${item.url}#t=0.1`} muted preload="metadata" />
+                    ) : (
+                      <img src={item.url} alt="" loading="lazy" />
+                    )
+                  ) : (
+                    <Icon name={item.kind === "project" ? "folder" : item.kind === "slot" ? "layers" : "image"} size={16} />
+                  )}
+                </span>
+                <span className="trash-text">
+                  <strong title={item.entry}>{item.name}</strong>
+                  <span className="trash-meta">
+                    {item.kind === "result" ? `Result of ${item.slot} v${item.version}` : TRASH_KIND[item.kind]}
+                    {item.trashedAt !== null && ` · deleted ${timeAgo(item.trashedAt)}`}
+                  </span>
+                </span>
+                {item.kind !== "other" && (
+                  <button className="btn btn-small" onClick={() => onRestore(item).then(load)}>
+                    <Icon name="undo" size={12} />
+                    Restore
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <footer className="modal-foot">
+          {data && (
+            <button className="link link-icon" onClick={() => onOpenFolder(data.path)}>
+              <Icon name="folder" />
+              Open the _trash folder
+            </button>
+          )}
+          <span className="prompt-count">To delete for good, empty the folder by hand.</span>
+        </footer>
+      </div>
+    </Modal>
   );
 }
 

@@ -106,7 +106,7 @@ If you can run a command in the background and be woken when it ends, finish eve
 curl -s ${waitUrl}
 \`\`\`
 
-It returns when the human presses Notify agent in the app, with a briefing: every slot where it is your turn, what to do, the human's words, and each result with its size and any mismatch; and every slot the human approved since the last briefing, with the file to use. Act on exactly those slots; do not scan the others, and do not re-read this file. An approved slot is final: write no review or version for it, and use its final file, or variants you make in \`exports/\`, wherever your work needs it. Open only the results, plus \`info.md\` where the briefing points to it. In the chat, report one short line per slot, since the details are in your reviews. Then start the command again. If it fails because the app is not running, do not retry: the human will tell you in the chat.
+It returns when the human presses Notify agent in the app, with a briefing: every slot where it is your turn, what to do, the human's words, and each result with its size and any mismatch; and every slot the human approved since the last briefing, with the file to use. Act on exactly those slots; do not scan the others, and do not re-read this file. An approved slot is final: write no review or version for it, and use its final file, or variants you make in \`exports/\`, wherever your work needs it. Open only the results, plus \`info.md\` where the briefing points to it. In the chat, report one short line per slot, since the details are in your reviews. Then start the command again. If it returns a message that the human stopped it, do not start it again. If it fails because the app is not running, do not retry: the human will tell you in the chat.
 `
     : ""
 }

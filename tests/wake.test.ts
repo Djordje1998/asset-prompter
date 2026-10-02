@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { addResults, createSlot, setApproval, setChangeRequest, setSelected } from "../src/server/actions";
 import { scanProject } from "../src/server/store";
-import { agentTurn, approvalLines, hasNews, memoryLog, newApprovals, notifyAgent, pendingApprovals, useBriefingLog, waitForNotify, wakeMessage } from "../src/server/wake";
+import { agentTurn, approvalLines, hasNews, memoryLog, newApprovals, notifyAgent, pendingApprovals, stopAgents, useBriefingLog, waitForNotify, wakeMessage } from "../src/server/wake";
 import { age, image, png, presets, tempProject, writeReview } from "./helpers";
 
 // The briefing the agent gets from /wait when the human presses Notify agent.
@@ -127,5 +127,18 @@ test("Notify sends approvals once, then only what is new", async () => {
   // Told once: nothing left to send until something changes.
   expect(hasNews(root(), slots())).toBe(false);
   await approved("logo");
+  expect(pendingApprovals(root(), slots())).toBe(1);
+});
+
+test("Stop ends every wait with the stop message and keeps the news for later", async () => {
+  useBriefingLog(memoryLog());
+  await approved("hero");
+  const project = { id: "stop", name: "p", path: root(), external: false };
+  const controller = new AbortController();
+  const waiting = waitForNotify(project, slots(), controller.signal, () => {});
+  expect(stopAgents(project)).toBe(1);
+  expect(await waiting).toContain("Stopped by the human in project p. Do not start waiting again");
+  expect(stopAgents(project)).toBe(0);
+  // The approval was not delivered, so Notify still has it.
   expect(pendingApprovals(root(), slots())).toBe(1);
 });

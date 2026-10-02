@@ -8,7 +8,11 @@ import {
   cloneSlot,
   createSlot,
   deleteResult,
+  listTrash,
+  restoreProject,
   restoreResult,
+  restoreTrashed,
+  restoreTrashedProject,
   restoreSlot,
   segment,
   setApproval,
@@ -16,6 +20,7 @@ import {
   setSelected,
   slotName,
   slugName,
+  trashProject,
   trashSlot,
 } from "./actions";
 import { afterResults, refreshInfo } from "./analysis";
@@ -25,8 +30,8 @@ import { inside, json, notFound, openInFileManager, serveFile } from "./http";
 import { eventStream, notifyChange, refreshWatchers } from "./live";
 import { type Project, findProject, isDir, listProjects } from "./projects";
 import { projectScans, selfContained } from "./scans";
-import { countStatuses, mediaKind, scanProject } from "./store";
-import { hasNews, listening, notifyAgent, pendingApprovals, waitForNotify } from "./wake";
+import { TRASH_DIR, countStatuses, fileUrl, mediaKind, scanProject } from "./store";
+import { hasNews, listening, notifyAgent, pendingApprovals, stopAgents, waitForNotify } from "./wake";
 
 export interface App {
   config: Config;
@@ -99,7 +104,8 @@ export function apiRoutes(app: App, wrap: Wrap) {
         // Checked again only after the folder changed: the text depends on presets and the port, fixed while running.
         for (const p of all) projectScans.whenNew(p.id, p.path, () => howTo(app, p));
         const list: ProjectSummary[] = all.map((p) => ({ ...p, counts: countStatuses(slotsOf(p)), listening: listening(p.id) }));
-        const state: AppState = { projects: list, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir };
+        const trashedProjects = listTrash(join(projectsDir, TRASH_DIR), true).filter((i) => i.kind === "project").length;
+        const state: AppState = { projects: list, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir, trashedProjects };
         return json(state);
       },
     },
@@ -117,7 +123,9 @@ export function apiRoutes(app: App, wrap: Wrap) {
     "/api/open": {
       POST: async (req) => {
         const path = resolve(String((await body(req)).path ?? ""));
-        if (!projects().some((p) => p.path === path || inside(p.path, path))) throw new UserError("That folder is not part of a project.");
+        const projectTrash = join(projectsDir, TRASH_DIR);
+        if (!projects().some((p) => p.path === path || inside(p.path, path)) && path !== projectTrash && !inside(projectTrash, path))
+          throw new UserError("That folder is not part of a project.");
         openInFileManager(isDir(path) ? path : resolve(path, ".."));
         return json({ ok: true });
       },
@@ -153,16 +161,35 @@ export function apiRoutes(app: App, wrap: Wrap) {
       GET: (_, p) => {
         const proj = project(p);
         const slots = slotsOf(proj);
-        return json({ slots, listening: listening(proj.id), newApprovals: pendingApprovals(proj.path, slots) });
+        const trash = listTrash(join(proj.path, TRASH_DIR), false).length;
+        return json({ slots, listening: listening(proj.id), newApprovals: pendingApprovals(proj.path, slots), trash });
       },
+      // A project of the projects folder goes to its _trash; one added from elsewhere only leaves the list,
+      // and its folder stays where it is. Either way it can be undone.
       DELETE: (_, p) => {
         const proj = project(p);
-        if (!proj.external) throw new UserError("Only folders added from elsewhere can be removed from the list. Delete this project's folder by hand.");
-        config.externalProjects = config.externalProjects.filter((path) => path !== proj.path);
+        stopAgents(proj);
+        let undo: () => void;
+        if (proj.external) {
+          config.externalProjects = config.externalProjects.filter((path) => path !== proj.path);
+          undo = () => {
+            if (!config.externalProjects.includes(proj.path)) config.externalProjects.push(proj.path);
+            saveConfig(config);
+          };
+        } else {
+          const trashed = trashProject(projectsDir, proj.path);
+          undo = () => restoreProject(proj.path, trashed);
+        }
         saveConfig(config);
         watchAll();
         notifyChange();
-        return json({ ok: true });
+        return json({
+          ok: true,
+          undo: offerUndo(proj, () => {
+            undo();
+            watchAll();
+          }),
+        });
       },
     },
 
@@ -172,6 +199,10 @@ export function apiRoutes(app: App, wrap: Wrap) {
         const text = await waitForNotify(proj, slotsOf(proj), req.signal, notifyChange);
         return new Response(text, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
       },
+    },
+
+    "/api/projects/:id/stop": {
+      POST: (_, p) => json({ stopped: stopAgents(project(p)) }),
     },
 
     "/api/projects/:id/notify": {
@@ -198,6 +229,51 @@ export function apiRoutes(app: App, wrap: Wrap) {
         const slot = slotOf(p);
         const trashed = trashSlot(proj.path, slot);
         return json({ ok: true, undo: offerUndo(proj, () => restoreSlot(proj.path, slot, trashed)) });
+      },
+    },
+
+    // Deleted projects, in projects/_trash.
+    "/api/trash": {
+      GET: () => json({ items: listTrash(join(projectsDir, TRASH_DIR), true), path: join(projectsDir, TRASH_DIR) }),
+    },
+
+    "/api/trash/restore": {
+      POST: async (req) => {
+        const name = restoreTrashedProject(projectsDir, String((await body(req)).entry ?? ""));
+        watchAll();
+        notifyChange();
+        return json({ ok: true, id: name });
+      },
+    },
+
+    // Deleted slots and results of one project, in its _trash.
+    "/api/projects/:id/trash": {
+      GET: (_, p) => {
+        const proj = project(p);
+        const dir = join(proj.path, TRASH_DIR);
+        const items = listTrash(dir, false).map((i) => (i.kind === "result" ? { ...i, url: fileUrl(proj.id, proj.path, join(dir, i.entry)) } : i));
+        return json({ items, path: dir });
+      },
+    },
+
+    "/api/projects/:id/trash/restore": {
+      POST: async (req, p) => {
+        const proj = project(p);
+        const restored = restoreTrashed(proj.path, String((await body(req)).entry ?? ""));
+        notifyChange();
+        return json({ ok: true, restored });
+      },
+    },
+
+    // Undo for a whole project, which no longer exists to be looked up.
+    "/api/undo/:token": {
+      POST: (_, p) => {
+        const entry = undos.get(p.token ?? "");
+        if (!entry) throw new UserError("That can no longer be undone.");
+        undos.delete(p.token!);
+        entry.run();
+        notifyChange();
+        return json({ ok: true });
       },
     },
 

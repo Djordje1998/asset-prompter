@@ -107,6 +107,65 @@ button {
   align-items: center;
 }
 
+/* ---- tooltip: one for the whole app (Tooltip.tsx), a small dark card with an info mark ---- */
+
+.tip {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  max-width: 320px;
+  padding: 6px 10px 7px 8px;
+  background: var(--bar);
+  color: var(--text);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.tip.is-below {
+  transform: translateY(-3px);
+}
+
+.tip.is-shown {
+  opacity: 1;
+  transform: none;
+}
+
+.tip > .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.brand {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The project path after "Open folder": cut from the start, so the project name at the end stays visible. */
+.folder-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: var(--faint);
+  font-size: 12px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -351,9 +410,107 @@ button {
 .menu-add {
   margin-top: 4px;
   border-top: var(--line);
-  border-radius: 0 0 4px 4px;
   color: var(--primary);
   font-weight: 600;
+}
+
+.menu-trash {
+  gap: 8px;
+  color: var(--muted);
+}
+
+.badge-quiet {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--muted);
+}
+
+/* The tools at the right of the tab bar: Trash, when there is any, then View. */
+.tabs-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.tabs-tools .view {
+  margin-left: 0;
+}
+
+.tabs-tools > .view-button {
+  margin-bottom: 6px;
+}
+
+/* ---- _trash dialogs ---- */
+
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--line);
+  border-radius: var(--radius);
+}
+
+.trash-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.trash-item + .trash-item {
+  border-top: var(--line);
+}
+
+.trash-thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 40px;
+  overflow: hidden;
+  background: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.trash-thumb img,
+.trash-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.trash-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.trash-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trash-empty {
+  color: var(--muted);
+}
+
+.menu-delete {
+  gap: 8px;
+  border-radius: 0 0 4px 4px;
+  color: color-mix(in srgb, var(--error) 80%, var(--text));
 }
 
 .badge {
@@ -510,9 +667,28 @@ button {
   vertical-align: 1px;
 }
 
+/* Without a listening agent there is no Stop half, so the wrapper adds nothing. */
+.notify-wrap {
+  display: contents;
+}
+
 .notify:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Next to Stop, a fading Notify would split the block in two: keep its surface, quiet only its label. */
+.split .notify:disabled,
+.split .notify:disabled:hover {
+  opacity: 1;
+  background: var(--card-hover);
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.split .notify:disabled > .icon,
+.split .notify:disabled > span {
+  opacity: 0.6;
 }
 
 /* ---- content width: Normal / Wide / Full, per tab; the bars above keep theirs ---- */
@@ -639,36 +815,6 @@ button {
   font-size: 12px;
 }
 
-.segmented {
-  display: flex;
-  flex: 1;
-  padding: 2px;
-  background: var(--well);
-  border: var(--line);
-  border-radius: 6px;
-}
-
-.segment {
-  flex: 1;
-  height: 24px;
-  background: none;
-  border: 0;
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.segment:hover {
-  color: var(--text);
-}
-
-.segment.is-on {
-  background: var(--card-hover);
-  color: var(--text);
-  box-shadow: 0 0 0 1px var(--edge-strong);
-}
 
 .done-grid {
   display: grid;
@@ -910,6 +1056,16 @@ button {
   font-size: 13px;
 }
 
+/* The slot's number by age, quiet next to its name; hover shows when it was made. */
+.slot-number {
+  flex: none;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
 .tile-bar {
   display: flex;
   align-items: center;
@@ -962,13 +1118,78 @@ button {
   font-size: 13px;
 }
 
-/* The full card of a Done slot, opened from its tile. */
-.modal:has(.detail-body) {
+/* The full card of a Done slot, opened from its tile: the card is the dialog, the panel under it pages through Done. */
+.detail-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   width: min(1200px, 100%);
+  max-height: 100%;
 }
 
-.detail-body {
-  padding: 16px;
+.detail-view > .card {
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.detail-view .card-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--tone) 6%, var(--card));
+}
+
+.detail-view .card-head .modal-close {
+  margin-left: 4px;
+}
+
+/* Pinned to the bottom edge of the screen; the overlay keeps room for it so the card never sits under it. */
+.detail-overlay:has(.detail-dock) {
+  padding-bottom: 168px;
+}
+
+.detail-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(1000px, 100%);
+  padding: 10px 0 8px;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 0.35);
+}
+
+.detail-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-strip {
+  display: flex;
+  justify-content: safe center;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 14px 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.detail-strip .lightbox-thumb-name {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter {
@@ -1079,13 +1300,22 @@ button {
   --tone: var(--approved);
 }
 
+/* A faint wash of the status colour, so a card that changed state stands out without shouting. */
 .card-head {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 12px;
   padding: 10px 16px;
-  border-bottom: var(--line);
+  background: color-mix(in srgb, var(--tone) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--tone) 18%, var(--edge));
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.card.is-collapsed .card-head {
+  border-bottom: 0;
+  border-radius: calc(var(--radius) - 1px);
 }
 
 .status-tag {
@@ -1173,10 +1403,6 @@ button {
   border-radius: 3px;
 }
 
-.card.is-collapsed .card-head {
-  border-bottom: 0;
-}
-
 .card-tools {
   margin-left: auto;
   display: flex;
@@ -1256,6 +1482,29 @@ button {
 .mediabox-empty-area .mediabox-empty {
   min-height: 180px;
   padding-bottom: 12px;
+}
+
+/* Blocked until an input is approved: no drop call, nothing to click but a quiet way to add anyway. */
+.mediabox-empty-area.is-blocked .mediabox-empty {
+  cursor: default;
+  border-style: dashed;
+  border-color: var(--edge);
+}
+
+.mediabox-empty-area.is-blocked .mediabox-empty > span:last-child {
+  max-width: 34ch;
+  text-align: center;
+}
+
+.mediabox-empty-area.is-blocked .mediabox-icon {
+  color: var(--muted);
+}
+
+/* Copying the prompt of a blocked slot is still possible, just not the main thing to do. */
+.card.status-waiting_input .btn-primary {
+  background: var(--card-hover);
+  border-color: var(--edge-strong);
+  color: var(--text);
 }
 
 .mediabox-empty strong {
@@ -1963,11 +2212,6 @@ button {
   transform: rotate(90deg);
 }
 
-.older-n {
-  font-weight: 600;
-  color: var(--text);
-}
-
 .older-thumb {
   width: 32px;
   height: 32px;
@@ -2197,30 +2441,43 @@ main.blank {
   gap: 12px;
 }
 
+/* A row of choices of equal width: the one chosen is raised. Used in View and in New project. */
 .segmented {
   display: flex;
-  padding: 3px;
+  flex: 1;
   gap: 3px;
+  padding: 3px;
   background: var(--well);
   border: var(--line);
   border-radius: var(--radius);
 }
 
 .segmented button {
-  flex: 1;
-  padding: 5px 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
   background: none;
   border: 0;
   border-radius: 4px;
   color: var(--muted);
+  font-size: 13px;
   font-weight: 600;
-  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .segmented button.is-on {
   background: var(--card-hover);
   color: var(--text);
-  box-shadow: 0 0 0 1px var(--edge-strong);
+  box-shadow: 0 0 0 1px var(--edge-strong), var(--shadow-small);
 }
 
 .lightbox {
@@ -2580,7 +2837,7 @@ main.blank {
 }
 
 /* Laptops with display scaling and half-screen windows: the top bar drops labels before it would spill. */
-@media (max-width: 1100px) {
+@media (max-width: 1160px) {
   .narrow-hide {
     display: none;
   }
@@ -2782,4 +3039,826 @@ video.is-loading {
 
 .feed.is-compact .specs {
   padding: 5px 10px;
+}
+
+/* ---- tutorial: a guided tour in a dialog, one screenshot or drawing per step ---- */
+
+/* The button that opens it shares the look of the sound switch, without the lamp. */
+.toggle-plain::before {
+  display: none;
+}
+
+/* Its label goes first when the top bar gets tight, well before the other labels do. */
+@media (max-width: 1280px) {
+  .toggle-plain .narrow-hide {
+    display: none;
+  }
+
+  .toggle-plain {
+    padding: 0 10px;
+  }
+}
+
+.tour-overlay {
+  z-index: 60;
+  background: rgb(10 9 12 / 0.82);
+}
+
+/*
+  The picture is 2.1 times as wide as tall and everything else has a fixed height (about 424px with the
+  space around the dialog), so on a short screen the dialog narrows until the whole step is in view.
+*/
+.tour {
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%, max(620px, calc((100dvh - 424px) * 2.096 + 30px)));
+  max-height: 100%;
+  overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  box-shadow: 8px 8px 0 var(--ink);
+}
+
+/* On a screen too short for all of it the dialog scrolls; its parts keep their height. */
+.tour > * {
+  flex: none;
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px 9px 18px;
+  border-bottom: var(--line);
+}
+
+.tour-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font: 700 15px/1.3 var(--display);
+}
+
+.tour-count {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tour-stage {
+  padding: 14px;
+  background:
+    radial-gradient(circle, #2b2832 1px, transparent 1.5px) 0 0 / 14px 14px,
+    var(--well);
+  border-bottom: var(--line);
+}
+
+.tour-frame {
+  position: relative;
+  aspect-ratio: 1180 / 563;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--page);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tour-frame.is-art {
+  background: var(--page);
+}
+
+.tour-scene,
+.tour-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tour-ghost {
+  opacity: 0;
+}
+
+.tour-shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* A mark frames one part of the screenshot; its number matches a point in the text. */
+.tour-mark {
+  --ring: 0 0 0 2px var(--primary), 0 0 0 6px rgb(217 164 65 / 0.2);
+  position: absolute;
+  /* A little air around the part it frames, so the ring and the number do not sit on it. */
+  box-sizing: content-box;
+  margin: -4px;
+  padding: 4px;
+  border-radius: 7px;
+  box-shadow: var(--ring);
+  transition: box-shadow 220ms, opacity 220ms;
+}
+
+.tour-mark-n,
+.tour-point-n {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font: 700 12px/20px var(--display);
+  text-align: center;
+}
+
+.tour-mark-n {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  box-shadow: var(--shadow-small);
+}
+
+/* Marks at the top edge carry their number below, where it is not cut off. */
+.tour-mark.is-low .tour-mark-n {
+  top: auto;
+  bottom: -11px;
+}
+
+/* Pointing at a point or a mark puts that part in the spotlight. */
+.tour-scene.has-active .tour-mark:not(.is-active) {
+  opacity: 0.3;
+}
+
+.tour-mark.is-active {
+  z-index: 1;
+  box-shadow: var(--ring), 0 0 0 2000px rgb(10 9 12 / 0.6);
+}
+
+.tour-text {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  align-items: start;
+  gap: 14px 30px;
+  min-height: 240px;
+  padding: 18px 22px 18px 24px;
+}
+
+.tour-kicker {
+  display: inline-flex;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.tour-kicker-n {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tour-lead h2 {
+  margin: 5px 0 9px;
+  font: 700 25px/1.15 var(--display);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.tour-lead p {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.tour-points {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tour-points li {
+  display: flex;
+  gap: 10px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.4;
+  transition: background-color 160ms;
+}
+
+.tour-points li.is-active {
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+}
+
+/* Steps without a screenshot have nothing to number: a pixel bullet instead. */
+.tour-points.is-plain .tour-point-n {
+  width: 6px;
+  height: 6px;
+  margin: 7px 7px 0;
+  border-radius: 0;
+  background: var(--edge-strong);
+}
+
+.tour-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--card);
+  border-top: var(--line);
+}
+
+.tour-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.tour-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--edge-strong);
+  transition: width 220ms, background-color 220ms;
+}
+
+/* The dot is small; this is the area that takes the click. */
+.tour-dot::after {
+  content: "";
+  position: absolute;
+  inset: -9px -3px;
+}
+
+.tour-dot:hover {
+  background: var(--muted);
+}
+
+.tour-dot.is-seen {
+  background: color-mix(in srgb, var(--primary) 50%, var(--edge-strong));
+}
+
+.tour-dot.is-on {
+  width: 26px;
+  background: var(--primary);
+}
+
+.tour-skip {
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.tour-next {
+  min-width: 92px;
+  justify-content: center;
+}
+
+/* ---- tutorial drawings: sized in em from the frame's width, so they scale with the dialog ---- */
+
+.tour-art {
+  position: absolute;
+  inset: 0;
+  font-size: clamp(8px, 1.62cqw, 16px);
+  line-height: 1.4;
+}
+
+.tour-loop {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.2em 4.5% 0;
+}
+
+/* Four cards and three gaps of 6%: the card centres sit at 10.25%, 36.75%, 63.25% and 89.75%. */
+.tour-loop-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6%;
+}
+
+.tour-node {
+  --tone: var(--agent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3em;
+  padding: 1.1em 1.1em 1.25em;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tour-node.tone-generate {
+  --tone: var(--generate);
+}
+
+.tour-node.tone-review {
+  --tone: var(--review);
+}
+
+.tour-node.tone-approved {
+  --tone: var(--approved);
+}
+
+/* A step you may skip: a dashed, flatter card. */
+.tour-node.is-optional {
+  border-style: dashed;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+}
+
+.tour-node-icon {
+  display: grid;
+  place-items: center;
+  width: 3.3em;
+  height: 3.3em;
+  margin-bottom: 0.55em;
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 42%, transparent);
+  border-radius: var(--radius);
+  color: var(--tone);
+}
+
+.tour-node-icon .icon {
+  width: 1.75em;
+  height: 1.75em;
+}
+
+.tour-node-who {
+  color: var(--tone);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tour-node strong {
+  font: 700 1.24em/1.2 var(--display);
+  letter-spacing: -0.01em;
+}
+
+.tour-node-text {
+  color: var(--muted);
+  font-size: 0.93em;
+}
+
+/* The arrow to the next card spans the gap: 6% of the row is 29.27% of a card. */
+.tour-link {
+  position: absolute;
+  left: calc(100% + 0.5em);
+  top: 2.7em;
+  width: calc(29.27% - 1.1em);
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--muted) 0 5px, transparent 5px 10px);
+}
+
+.tour-link::after {
+  content: "";
+  position: absolute;
+  right: -0.35em;
+  top: -4px;
+  border: 5px solid transparent;
+  border-left: 6px solid var(--muted);
+  border-right: 0;
+}
+
+/* From the review back to generating: the agent writes the next version when a result is not right. */
+.tour-loop-back {
+  position: relative;
+  width: 26.5%;
+  height: 2.9em;
+  margin: 1em 0 0 36.75%;
+  border: 2px dashed color-mix(in srgb, var(--review) 60%, transparent);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+.tour-loop-back::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  border: 5px solid transparent;
+  border-top: 0;
+  border-bottom: 7px solid color-mix(in srgb, var(--review) 80%, var(--page));
+}
+
+.tour-loop-back span {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 55%);
+  padding: 0.12em 0.8em 0.18em;
+  background: var(--page);
+  border: 1px solid color-mix(in srgb, var(--review) 45%, var(--edge));
+  border-radius: 999px;
+  color: var(--review);
+  font-size: 0.86em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tour-why {
+  display: flex;
+  justify-content: center;
+  padding: 4% 5%;
+}
+
+/* Two rows that fill the frame; each picture takes the height its text leaves. */
+.tour-why .tour-extras-grid {
+  width: 100%;
+  max-width: 62em;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0.9em;
+}
+
+.tour-why .tour-extra {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 0.9em 0.8em;
+}
+
+.tour-why .tour-extra > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* The pictures share the card's colour, so the empty sides of a scaled-down picture do not show. */
+.tour-why-art {
+  flex: 1 1 0;
+  min-height: 3em;
+  width: calc(100% + 1.8em);
+  max-height: 11em;
+  margin: 0 -0.9em 0.55em;
+  object-fit: contain;
+  border-bottom: 1px solid var(--edge);
+}
+
+.tour-extras {
+  display: grid;
+  grid-template-columns: 27% minmax(0, 1fr);
+  align-items: center;
+  gap: 4%;
+  padding: 0 5% 0 4%;
+}
+
+.tour-extras-art {
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tour-extras-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1em;
+}
+
+.tour-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  padding: 1em 1em 1.1em;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
+}
+
+.tour-extra-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5em;
+  height: 2.5em;
+  margin-bottom: 0.5em;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: var(--radius);
+  color: var(--primary);
+}
+
+.tour-extra-icon .icon {
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.tour-extra strong {
+  font: 700 1.14em/1.2 var(--display);
+}
+
+.tour-extra > span:last-child {
+  color: var(--muted);
+  font-size: 0.92em;
+}
+
+/* ---- tutorial on short, wide screens (most laptops): picture and text side by side, so the picture stays large ---- */
+
+@media (max-height: 790px) and (min-width: 1100px) {
+  .tour {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    width: min(1200px, 100%);
+  }
+
+  .tour-head,
+  .tour-foot {
+    grid-column: 1 / -1;
+  }
+
+  .tour-stage {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-bottom: 0;
+    border-right: var(--line);
+  }
+
+  .tour-text {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    /* The tallest step, so the dialog keeps one height from step to step. */
+    min-height: 390px;
+    padding: 18px 16px 18px 22px;
+  }
+}
+
+/* ---- tutorial on narrow screens: the text stacks, and the numbers stay readable ---- */
+
+@media (max-width: 760px) {
+  .tour-overlay {
+    padding: 10px;
+  }
+
+  .tour {
+    width: 100%;
+  }
+
+  .tour-stage {
+    padding: 10px;
+  }
+
+  .tour-text {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    padding: 16px 16px 18px;
+  }
+
+  .tour-lead h2 {
+    font-size: 21px;
+  }
+
+  .tour-mark-n {
+    left: -8px;
+    top: -8px;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    line-height: 16px;
+  }
+
+  .tour-mark.is-low .tour-mark-n {
+    bottom: -8px;
+  }
+
+  .tour-foot {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .tour-dots {
+    flex-basis: 100%;
+    justify-content: center;
+    margin: 0 0 4px;
+  }
+
+  .tour-skip {
+    margin-right: auto;
+  }
+}
+
+/* ---- tutorial motion: all of it is decoration, so none of it runs when the system asks for less ---- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .tour-overlay {
+    animation: tour-fade 200ms ease-out;
+  }
+
+  .tour {
+    animation: tour-open 340ms cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards;
+  }
+
+  /* A new step slides in from the side it comes from, over the fading picture of the step before. */
+  .tour-scene.is-next,
+  .tour-text.is-next .tour-lead {
+    animation: tour-from-right 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+
+  .tour-scene.is-back,
+  .tour-text.is-back .tour-lead {
+    animation: tour-from-left 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+
+  .tour-ghost {
+    animation: tour-fade 260ms ease-in reverse backwards;
+  }
+
+  .tour-points li {
+    animation: tour-rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(140ms + var(--i) * 80ms);
+  }
+
+  /* The marks land one by one after the picture, then each keeps a slow pulse. */
+  .tour-mark {
+    animation: tour-mark-in 460ms cubic-bezier(0.2, 0.9, 0.3, 1.3) backwards;
+    animation-delay: calc(460ms + var(--i) * 190ms);
+  }
+
+  .tour-mark::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    animation: tour-pulse 2.6s ease-out infinite;
+    animation-delay: calc(1100ms + var(--i) * 190ms);
+  }
+
+  .tour-mark-n {
+    animation: tour-pop 420ms cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
+    animation-delay: calc(560ms + var(--i) * 190ms);
+  }
+
+  /* The loop plays in order: each card lights up for its two seconds. */
+  .tour-node {
+    animation:
+      tour-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards,
+      tour-node-on 8s ease-in-out infinite;
+    animation-delay: calc(160ms + var(--i) * 120ms), calc(900ms + var(--i) * 2s);
+  }
+
+  .tour-node-icon {
+    animation: tour-icon-on 8s ease-in-out infinite;
+    animation-delay: calc(900ms + var(--i) * 2s);
+  }
+
+  .tour-link {
+    animation: tour-march 700ms linear infinite;
+  }
+
+  .tour-loop-back {
+    animation: tour-fade 500ms ease-out 800ms backwards;
+  }
+
+  .tour-extras-art {
+    animation: tour-rise 520ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms backwards;
+  }
+
+  .tour-extra {
+    animation: tour-rise 440ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(200ms + var(--i) * 80ms);
+  }
+}
+
+@keyframes tour-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tour-open {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+
+@keyframes tour-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(34px);
+  }
+}
+
+@keyframes tour-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-34px);
+  }
+}
+
+@keyframes tour-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes tour-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+}
+
+@keyframes tour-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+@keyframes tour-pulse {
+  0% {
+    box-shadow: 0 0 0 2px rgb(217 164 65 / 0.55);
+  }
+  60%,
+  100% {
+    box-shadow: 0 0 0 14px rgb(217 164 65 / 0);
+  }
+}
+
+@keyframes tour-node-on {
+  0%,
+  27%,
+  100% {
+    border-color: var(--edge-strong);
+    box-shadow: var(--shadow);
+    transform: none;
+  }
+  4%,
+  22% {
+    border-color: var(--tone);
+    box-shadow: 7px 7px 0 var(--ink);
+    transform: translate(-3px, -3px);
+  }
+}
+
+@keyframes tour-icon-on {
+  0%,
+  27%,
+  100% {
+    background: color-mix(in srgb, var(--tone) 15%, transparent);
+    color: var(--tone);
+  }
+  4%,
+  22% {
+    background: var(--tone);
+    color: var(--ink);
+  }
+}
+
+@keyframes tour-march {
+  to {
+    background-position-x: 10px;
+  }
+}
+
+/* The app's own tags and buttons drawn inside tutorial text, so the reader knows what to look for. */
+.tour-inline {
+  vertical-align: 1px;
+  margin: 0 1px;
+  line-height: 20px;
+}
+
+.tour-inline.status-tag {
+  padding: 0 8px 0 6px;
+  font-size: 12px;
+}
+
+.tour-inline-button {
+  display: inline-block;
+  padding: 0 7px;
+  background: var(--card-hover);
+  color: var(--text);
+  border: 1px solid var(--edge-strong);
+  border-radius: 5px;
+  box-shadow: 1px 1px 0 var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }

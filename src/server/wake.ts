@@ -156,6 +156,19 @@ export function waitForNotify(project: Project, slots: Slot[], signal: AbortSign
   });
 }
 
+export const stopMessage = (project: { name: string }) =>
+  `Stopped by the human in project ${project.name}. Do not start waiting again; the human will tell you in the chat when there is more to do.
+`;
+
+/** Ends every wait on the project with the stop message, and drops a Notify pressed while nobody waited. */
+export function stopAgents(project: Project): number {
+  notifyPending.delete(project.id);
+  const set = waiters.get(project.id);
+  const n = set?.size ?? 0;
+  for (const wake of [...(set ?? [])]) wake(stopMessage(project));
+  return n;
+}
+
 /** Wakes every agent waiting on the project. False when none is: the next /wait then answers at once. */
 export function notifyAgent(project: Project, slots: Slot[]): boolean {
   const set = waiters.get(project.id);

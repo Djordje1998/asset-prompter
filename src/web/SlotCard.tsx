@@ -1,10 +1,10 @@
 import { useState } from "react";
-import type { Slot } from "../shared/types";
+import type { Slot, Version } from "../shared/types";
 import { useApp } from "./context";
 import { readStored, writeStored } from "./hooks";
 import { Icon } from "./icons";
 import { STATUS_LABEL, call, copyText, slotUrl } from "./lib";
-import { CopyName, Media, STATUS_ICON } from "./shared";
+import { CopyName, Media, STATUS_ICON, SlotNumber } from "./shared";
 import { VersionBody, WarningChip } from "./Version";
 
 function Chevron({ open }: { open: boolean }) {
@@ -14,9 +14,15 @@ function Chevron({ open }: { open: boolean }) {
 /** Collapsed cards are remembered per project in this browser. */
 const collapseKey = (project: string, slot: string) => `collapsed:${project}:${slot}`;
 
-export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible?: boolean }) {
+/**
+ * `onClose` puts a close button at the end of the head, for when the card is a dialog of its own.
+ * `single` shows one version at a time: opening an older one folds the current one away.
+ */
+export function SlotCard({ slot, collapsible = true, onClose, single = false }: { slot: Slot; collapsible?: boolean; onClose?: () => void; single?: boolean }) {
   const ctx = useApp();
   const [open, setOpen] = useState<Set<number>>(new Set());
+  /** In `single` mode, the one open version; null means the current one. */
+  const [only, setOnly] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
   const key = collapseKey(ctx.project.id, slot.name);
   const [collapsedState, setCollapsed] = useState(() => readStored(key) === "1");
@@ -29,12 +35,38 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
   const latest = slot.versions.find((v) => v.n === slot.approved) ?? slot.versions.at(-1);
   const older = slot.versions.filter((v) => v !== latest).reverse();
   const collapsedThumb = latest ? (latest.results.find((c) => c.file === latest.selected) ?? latest.results[0]) : undefined;
+  // The current version is always open, except in `single` mode while an older one is shown instead.
+  const isOpen = (n: number) => (single ? (only ?? latest?.n) === n : n === latest?.n || open.has(n));
   const toggle = (n: number) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      next.has(n) ? next.delete(n) : next.add(n);
-      return next;
-    });
+    single
+      ? setOnly(isOpen(n) && n !== latest?.n ? null : n)
+      : setOpen((prev) => {
+          const next = new Set(prev);
+          next.has(n) ? next.delete(n) : next.add(n);
+          return next;
+        });
+  const row = (v: Version) => {
+    const thumb = v.results.find((c) => c.file === v.selected) ?? v.results[0];
+    return (
+      <button className="older-row" onClick={() => toggle(v.n)} aria-expanded={isOpen(v.n)}>
+        <span className="older-caret" aria-hidden="true">
+          <Chevron open={isOpen(v.n)} />
+        </span>
+        <span className="card-version">v{v.n}</span>
+        {thumb && <Media item={thumb} className="older-thumb" />}
+        <span className="older-summary">
+          {slot.approved === v.n ? "Approved. " : ""}
+          {v.changeRequest
+            ? `You asked: ${v.changeRequest}`
+            : v.review?.text
+              ? `Agent: ${v.review.text}`
+              : v.results.length
+                ? "No change request"
+                : "Never generated"}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <article className={`card status-${slot.status}${collapsed ? " is-collapsed" : ""}`}>
@@ -44,10 +76,7 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
             <Chevron open={!collapsed} />
           </button>
         )}
-        <span className="status-tag" title={slot.waitingFor.length ? `Generate it after ${slot.waitingFor.join(", ")} is approved` : undefined}>
-          <Icon name={STATUS_ICON[slot.status]} size={12} />
-          {slot.status === "waiting_input" ? `Waiting for ${slot.waitingFor.join(", ")}` : STATUS_LABEL[slot.status]}
-        </span>
+        <SlotNumber slot={slot} />
         <h2>{slot.name}</h2>
         <CopyName name={slot.name} />
         {latest && (
@@ -55,6 +84,11 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
             v{latest.n}
           </span>
         )}
+        {/* After the name and version: whose turn it is now. */}
+        <span className="status-tag" title={slot.waitingFor.length ? `Generate it after ${slot.waitingFor.join(", ")} is approved` : undefined}>
+          <Icon name={STATUS_ICON[slot.status]} size={12} />
+          {slot.status === "waiting_input" ? `Waiting for ${slot.waitingFor.join(", ")}` : STATUS_LABEL[slot.status]}
+        </span>
         <WarningChip label="Name to check" items={slot.warnings} />
         {collapsed && collapsedThumb && <Media item={collapsedThumb} className="card-thumb" />}
         <div className="card-tools">
@@ -85,39 +119,29 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
             </button>
           )}
         </div>
+        {onClose && (
+          <button className="modal-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+            <Icon name="x" size={12} />
+          </button>
+        )}
       </header>
       {!collapsed && slot.description && <p className="card-description">{slot.description}</p>}
       {collapsed ? null : latest ? (
-        <VersionBody slot={slot} version={latest} />
+        isOpen(latest.n) ? (
+          <VersionBody slot={slot} version={latest} />
+        ) : (
+          <section className="older">{row(latest)}</section>
+        )
       ) : (
         <p className="card-empty">This slot has no version file yet. The agent writes v1.md here, or add one with "New version".</p>
       )}
       {!collapsed &&
-        older.map((v) => {
-          const thumb = v.results.find((c) => c.file === v.selected) ?? v.results[0];
-          return (
-            <section key={v.n} className="older">
-              <button className="older-row" onClick={() => toggle(v.n)} aria-expanded={open.has(v.n)}>
-                <span className="older-caret" aria-hidden="true">
-                  <Chevron open={open.has(v.n)} />
-                </span>
-                <span className="older-n">v{v.n}</span>
-                {thumb && <Media item={thumb} className="older-thumb" />}
-                <span className="older-summary">
-                  {slot.approved === v.n ? "Approved. " : ""}
-                  {v.changeRequest
-                    ? `You asked: ${v.changeRequest}`
-                    : v.review?.text
-                      ? `Agent: ${v.review.text}`
-                      : v.results.length
-                        ? "No change request"
-                        : "Never generated"}
-                </span>
-              </button>
-              {open.has(v.n) && <VersionBody slot={slot} version={v} />}
-            </section>
-          );
-        })}
+        older.map((v) => (
+          <section key={v.n} className="older">
+            {row(v)}
+            {isOpen(v.n) && <VersionBody slot={slot} version={v} />}
+          </section>
+        ))}
     </article>
   );
 }

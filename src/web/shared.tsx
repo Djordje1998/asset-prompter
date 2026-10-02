@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { Result, Slot } from "../shared/types";
 import { useApp } from "./context";
 import { Icon, type IconName } from "./icons";
-import { copyImage, copyText, formatBytes } from "./lib";
+import { copyImage, copyText, createdLabel, formatBytes } from "./lib";
 
 /** An image or video that shows a shimmering placeholder until its first frame is in. */
 export function Media({
@@ -58,6 +58,15 @@ export function CopyImageButton({ url }: { url: string }) {
     <button className="tile-copy" onClick={() => ctx.act(() => copyImage(url), "Image copied")} title="Copy image" aria-label="Copy image">
       <Icon name="copyimage" size={15} />
     </button>
+  );
+}
+
+/** The slot's number by age; hover shows when it was created. */
+export function SlotNumber({ slot }: { slot: Slot }) {
+  return (
+    <span className="slot-number" title={createdLabel(slot.number, slot.createdAt)}>
+      #{slot.number}
+    </span>
   );
 }
 

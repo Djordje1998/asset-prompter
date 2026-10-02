@@ -10,11 +10,18 @@ export function ProjectMenu({
   project,
   onChoose,
   onAdd,
+  onDelete,
+  trashed,
+  onTrash,
 }: {
   projects: ProjectSummary[];
   project: ProjectSummary | null;
   onChoose: (id: string) => void;
   onAdd: () => void;
+  onDelete: (project: ProjectSummary) => void;
+  /** Projects in projects/_trash. */
+  trashed: number;
+  onTrash: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -81,6 +88,33 @@ export function ProjectMenu({
           >
             Add a project
           </button>
+          {trashed > 0 && (
+            <button
+              className="menu-item menu-trash"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onTrash();
+              }}
+            >
+              <Icon name="trash" size={12} />
+              Deleted projects
+              <span className="badge badge-quiet">{trashed}</span>
+            </button>
+          )}
+          {project && (
+            <button
+              className="menu-item menu-delete"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onDelete(project);
+              }}
+            >
+              <Icon name="trash" size={12} />
+              {project.external ? `Remove ${project.name} from the list` : `Delete ${project.name}`}
+            </button>
+          )}
         </div>
       )}
     </div>

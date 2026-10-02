@@ -24,6 +24,8 @@ From then on, start it with the icon. The icon starts the server in the backgrou
 
 To use it with an agent, open a project, press **Copy agent instructions** and paste it into a new chat with your agent. That is the only message the agent needs; after each batch you generate, press **Notify agent**.
 
+New to it? The **Tutorial** button in the top bar walks through the whole loop step by step, with pictures of a real project. It opens by itself on the first visit.
+
 ### Let your agent install it
 
 Paste this into a chat with a coding agent that can run commands (Claude Code, for example):

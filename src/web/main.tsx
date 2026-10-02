@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppState, Slot, Status, Version } from "../shared/types";
-import { CloneDialog, Lightbox, Modal, SlotTitle, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
+import type { AppState, ProjectSummary, Slot, Status, Version } from "../shared/types";
+import { CloneDialog, DeleteProjectDialog, Lightbox, TrashDialog, Modal, SlotTitle, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
 import doneArt from "./art/empty-done.png";
+import agentArt from "./art/empty-filter-agent.png";
+import approvalArt from "./art/empty-filter-approval.png";
+import generatingArt from "./art/empty-filter-generating.png";
+import inputArt from "./art/empty-filter-input.png";
 import progressArt from "./art/empty-in-progress.png";
 import { copiedKey, markPromptCopied } from "./copied";
 import { AppContext, type Ctx, type LightboxItem } from "./context";
-import { DoneTile, VariantsList, finalResult } from "./Done";
+import { DetailDialog, DoneTile, VariantsList, finalResult } from "./Done";
 import { readStored, writeStored } from "./hooks";
 import { Icon, Logo } from "./icons";
 import { CHANGED_EVENT, STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
 import { ProjectMenu } from "./ProjectMenu";
 import { STATUS_ICON } from "./shared";
 import { SlotCard } from "./SlotCard";
+import { Tooltips } from "./Tooltip";
+import { Tutorial } from "./Tutorial";
 import { type Tab, ViewSettings, useViewSettings } from "./ViewSettings";
 
 type Filter = Status | "all";
@@ -30,11 +36,22 @@ type Dialog =
   | { kind: "prompt"; slot: Slot; version: Version }
   | { kind: "lightbox"; items: LightboxItem[]; index: number }
   | { kind: "instructions" }
+  | { kind: "deleteProject"; project: ProjectSummary }
+  | { kind: "trash" }
+  | { kind: "projectTrash" }
   | null;
 
+/** An empty filter shows the In progress scene with one change that says why it is empty. */
+const FILTER_ART: Partial<Record<Filter, string>> = {
+  waiting_generation: generatingArt,
+  waiting_agent: agentArt,
+  waiting_review: approvalArt,
+  waiting_input: inputArt,
+};
+
 /** The pixel-art pictures for empty views, made in the asset-prompter-brand project. */
-function EmptyArt({ done = false }: { done?: boolean }) {
-  return <img className="empty-art" src={done ? doneArt : progressArt} alt="" width={240} />;
+function EmptyArt({ done = false, filter = "all" }: { done?: boolean; filter?: Filter }) {
+  return <img className="empty-art" src={done ? doneArt : (FILTER_ART[filter] ?? progressArt)} alt="" width={240} />;
 }
 
 /** Placeholder cards or tiles in the shape of the view, shown while a project's slots load. */
@@ -82,6 +99,8 @@ function App() {
   const [listening, setListening] = useState(0);
   /** Approvals the agent has not been told about; Notify agent sends them with the agent's turns. */
   const [newApprovals, setNewApprovals] = useState(0);
+  /** Items in the open project's _trash. */
+  const [trashCount, setTrashCount] = useState(0);
   const [filter, setFilter] = useState<Filter>("all");
   const [tab, setTab] = useState<Tab>(readStored("tab") === "done" ? "done" : "progress");
   const view = useViewSettings(tab);
@@ -92,6 +111,12 @@ function App() {
   const [variantsOf, setVariantsOf] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [sound, setSound] = useState(readStored("sound") !== "off");
+  /** The tour opens by itself on the first visit in this browser, and from its button after that. */
+  const [touring, setTouring] = useState(() => readStored("tutorial:seen") !== "1");
+  const closeTour = () => {
+    writeStored("tutorial:seen", "1");
+    setTouring(false);
+  };
   const [toast, setToast] = useState<{ message: string; isError: boolean; id: number; undo?: () => void } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const pasteTarget = useRef<{ slot: string; n: number } | null>(null);
@@ -153,12 +178,14 @@ function App() {
   const refreshSlots = useCallback(async () => {
     if (!currentId) return setSlots(null);
     try {
-      const data = await call<{ slots: Slot[]; listening: number; newApprovals: number }>("GET", `/api/projects/${enc(currentId)}`);
+      const data = await call<{ slots: Slot[]; listening: number; newApprovals: number; trash: number }>("GET", `/api/projects/${enc(currentId)}`);
       setSlots(data.slots);
       setListening(data.listening);
       setNewApprovals(data.newApprovals);
+      setTrashCount(data.trash);
     } catch (e) {
-      showToast((e as Error).message, true);
+      // A project deleted a moment ago is simply gone; the next state names the one shown instead.
+      if (!/^Project ".*" does not exist\.$/.test((e as Error).message)) showToast((e as Error).message, true);
     }
   }, [currentId, showToast]);
 
@@ -177,10 +204,18 @@ function App() {
   };
   useEffect(() => {
     const events = new EventSource("/api/events");
-    events.onmessage = () => refreshAll.current();
+    // An agent writing a version, or a batch of dropped results, changes many files at once: refresh once it settles.
+    let timer = 0;
+    events.onmessage = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => refreshAll.current(), 150);
+    };
     // After a server restart the stream reconnects by itself; reload once it is back.
     events.onopen = () => refreshAll.current();
-    return () => events.close();
+    return () => {
+      window.clearTimeout(timer);
+      events.close();
+    };
   }, []);
 
   const act = useCallback(
@@ -262,7 +297,11 @@ function App() {
 
   if (!state) return <main className="blank">{loadError ? `Cannot reach the app server: ${loadError}` : "Loading"}</main>;
 
-  const inProgress = (slots ?? []).filter((s) => s.status !== "approved");
+  // Oldest first, so the work reads top to bottom in the order it was asked for, with slots that wait for
+  // another slot last; Done keeps the newest first.
+  const inProgress = (slots ?? [])
+    .filter((s) => s.status !== "approved")
+    .sort((a, b) => Number(a.status === "waiting_input") - Number(b.status === "waiting_input") || a.number - b.number);
   const done = (slots ?? []).filter((s) => s.status === "approved");
   const visible = inProgress.filter((s) => filter === "all" || s.status === filter);
   const count = (f: Filter) => (f === "all" ? inProgress.length : inProgress.filter((s) => s.status === f).length);
@@ -284,7 +323,15 @@ function App() {
           <Logo size={24} />
           <span className="brand-name">Asset Prompter</span>
         </div>
-        <ProjectMenu projects={state.projects} project={project} onChoose={chooseProject} onAdd={() => setDialog({ kind: "project" })} />
+        <ProjectMenu
+          projects={state.projects}
+          project={project}
+          onChoose={chooseProject}
+          onAdd={() => setDialog({ kind: "project" })}
+          onDelete={(p) => setDialog({ kind: "deleteProject", project: p })}
+          trashed={state.trashedProjects}
+          onTrash={() => setDialog({ kind: "trash" })}
+        />
         {project && (
           <>
             <div className="split">
@@ -300,9 +347,16 @@ function App() {
               <Icon name="folder" />
               <span className="narrow-hide">Open folder</span>
             </button>
+            <span className="folder-path narrow-hide">
+              <bdi>{project.path}</bdi>
+            </span>
           </>
         )}
         <div className="topbar-right">
+          <button className="toggle toggle-plain" onClick={() => setTouring(true)} title="How Asset Prompter works, step by step" aria-haspopup="dialog">
+            <Icon name="help" />
+            <span className="narrow-hide">Tutorial</span>
+          </button>
           <button
             className={`toggle${sound ? " is-on" : ""}`}
             role="switch"
@@ -336,7 +390,15 @@ function App() {
             <Icon name="star" />
             Done <span className="filter-count">{done.length}</span>
           </button>
-          <ViewSettings tab={tab} view={view} />
+          <div className="tabs-tools">
+            {trashCount > 0 && (
+              <button className="view-button" onClick={() => setDialog({ kind: "projectTrash" })} title="Deleted slots and results of this project">
+                <Icon name="trash" />
+                Trash <span className="filter-count">{trashCount}</span>
+              </button>
+            )}
+            <ViewSettings tab={tab} view={view} />
+          </div>
         </nav>
       )}
 
@@ -350,25 +412,47 @@ function App() {
             </button>
           ))}
           <div className="filters-actions">
-          <button
-            className={`btn notify${listening ? " is-listening" : ""}`}
-            disabled={news === 0}
-            onClick={() =>
-              act(async () => {
-                const r = await call<{ delivered: boolean }>("POST", `/api/projects/${enc(project.id)}/notify`);
-                showToast(r.delivered ? "Agent notified" : "The agent is not waiting right now. It gets this as soon as it starts waiting, or tell it \"done\" in the chat.", !r.delivered);
-              })
-            }
-            title={
-              listening
-                ? "The agent is waiting. Press to send it every slot where it is its turn, and what you approved since the last time."
-                : "The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md."
-            }
-          >
-            <Icon name="robot" />
-            Notify agent
-            {news > 0 && <span className="filter-count">{news}</span>}
-          </button>
+          <div className={listening ? "split" : "notify-wrap"}>
+            <button
+              className={`btn notify${listening ? " is-listening split-main" : ""}`}
+              disabled={news === 0}
+              onClick={() =>
+                act(async () => {
+                  const r = await call<{ delivered: boolean }>("POST", `/api/projects/${enc(project.id)}/notify`);
+                  showToast(r.delivered ? "Agent notified" : "The agent is not waiting right now. It gets this as soon as it starts waiting, or tell it \"done\" in the chat.", !r.delivered);
+                })
+              }
+              title={[
+                listening
+                  ? "The agent is waiting. Press to send it every slot where it is its turn, and what you approved since the last time."
+                  : "The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md.",
+                // The count on the button adds two things up; say which.
+                news > 0
+                  ? `To send: ${[
+                      count("waiting_agent") > 0 && `${count("waiting_agent")} for the agent to work on`,
+                      newApprovals > 0 && `${newApprovals} ${newApprovals === 1 ? "approval" : "approvals"} to report`,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}.`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("\n")}
+            >
+              <Icon name="robot" />
+              Notify agent
+              {news > 0 && <span className="filter-count">{news}</span>}
+            </button>
+            {listening > 0 && (
+              <button
+                className="btn split-side"
+                onClick={() => act(() => call("POST", `/api/projects/${enc(project.id)}/stop`), "The agent stopped listening")}
+                title="Tell the waiting agent to stop listening. It starts again when you ask it in the chat."
+              >
+                Stop
+              </button>
+            )}
+          </div>
           {count("waiting_review") > 1 && (
             <button
               className="btn btn-approve"
@@ -417,7 +501,7 @@ function App() {
         )}
         {tab === "progress" && project && slots && slots.length > 0 && visible.length === 0 && (
           <div className="blank blank-center">
-            <EmptyArt />
+            <EmptyArt filter={filter} />
             <p>{filter === "all" ? "Nothing in progress. Approved assets are in Done." : `Nothing here: no slot is "${STATUS_LABEL[filter as Status]}".`}</p>
           </div>
         )}
@@ -450,11 +534,7 @@ function App() {
       </main>
 
       {detailSlot && ctx && (
-        <Modal title={<SlotTitle action="Details" slot={detailSlot.name} />} label={`Details ${detailSlot.name}`} onClose={() => setDetail(null)} wide>
-          <div className="detail-body">
-            <SlotCard slot={detailSlot} collapsible={false} />
-          </div>
-        </Modal>
+        <DetailDialog slots={done} slot={detailSlot} onShow={setDetail} onClose={() => setDetail(null)} paused={dialog !== null || variantsSlot !== undefined} />
       )}
       {variantsSlot && ctx && (
         <Modal
@@ -508,6 +588,56 @@ function App() {
               if (project) markPromptCopied(copiedKey(project.id, dialog.slot.name, dialog.version.n), dialog.version.prompt);
             }, "Prompt copied")
           } />
+      )}
+      {dialog?.kind === "deleteProject" && (
+        <DeleteProjectDialog
+          project={dialog.project}
+          onClose={close}
+          onDelete={() => {
+            const gone = dialog.project;
+            close();
+            const next = state.projects.find((p) => p.id !== gone.id);
+            if (next) chooseProject(next.id);
+            act(async () => {
+              const { undo } = await call<{ undo: string }>("DELETE", `/api/projects/${enc(gone.id)}`);
+              const run = () =>
+                act(async () => {
+                  await call("POST", `/api/undo/${enc(undo)}`);
+                  chooseProject(gone.id);
+                }, `${gone.name} is back`);
+              lastUndo.current = run;
+              showToast(gone.external ? `${gone.name} removed from the list` : `${gone.name} moved to projects/_trash`, false, run);
+            });
+          }}
+        />
+      )}
+      {dialog?.kind === "trash" && (
+        <TrashDialog
+          title="Deleted projects"
+          url="/api/trash"
+          onClose={close}
+          onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
+          onRestore={(item) =>
+            act(async () => {
+              const { id } = await call<{ id: string }>("POST", "/api/trash/restore", { entry: item.entry });
+              chooseProject(id);
+            }, `${item.name} is back`)
+          }
+        />
+      )}
+      {dialog?.kind === "projectTrash" && project && (
+        <TrashDialog
+          title={`Trash of ${project.name}`}
+          url={`/api/projects/${enc(project.id)}/trash`}
+          onClose={close}
+          onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
+          onRestore={(item) =>
+            act(async () => {
+              const { restored } = await call<{ restored: string }>("POST", `/api/projects/${enc(project.id)}/trash/restore`, { entry: item.entry });
+              showToast(`${restored} is back`);
+            })
+          }
+        />
       )}
       {dialog?.kind === "project" && (
         <NewProjectDialog
@@ -563,6 +693,8 @@ function App() {
         />
       )}
 
+      {touring && <Tutorial onClose={closeTour} />}
+
       {toast && (
         <div key={toast.id} className={`toast${toast.isError ? " is-error" : ""}`} role="status">
           <span className="toast-message">{toast.message}</span>
@@ -581,4 +713,9 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <>
+    <App />
+    <Tooltips />
+  </>,
+);

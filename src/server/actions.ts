@@ -1,6 +1,6 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import type { NewVersionInput } from "../shared/types";
+import type { NewVersionInput, TrashItem } from "../shared/types";
 import { parseDoc, writeDoc } from "./frontmatter";
 import {
   APPROVED_FILE,
@@ -252,10 +252,91 @@ export function trashSlot(projectDir: string, slot: string): string {
   return trash(projectDir, slotDir, basename(slotDir));
 }
 
+/** Moves a project folder into _trash in the projects folder, which the project list skips. */
+export function trashProject(projectsDir: string, projectDir: string): string {
+  if (!existsSync(projectDir)) throw new UserError(`${basename(projectDir)} does not exist.`);
+  return trash(projectsDir, projectDir, basename(projectDir));
+}
+
+/** Undoes trashProject. */
+export function restoreProject(projectDir: string, trashed: string): void {
+  if (!existsSync(trashed)) throw new UserError(`${basename(projectDir)} is no longer in _trash.`);
+  if (existsSync(projectDir)) throw new UserError(`A new project named "${basename(projectDir)}" was made since.`);
+  renameSync(trashed, projectDir);
+}
+
 /** Undoes trashSlot. */
 export function restoreSlot(projectDir: string, slot: string, trashed: string): void {
   const slotDir = join(projectDir, slot);
   if (!existsSync(trashed)) throw new UserError(`${slot} is no longer in _trash.`);
   if (existsSync(slotDir)) throw new UserError(`A new slot named "${slot}" was made since.`);
   renameSync(trashed, slotDir);
+}
+
+// ---- _trash -------------------------------------------------------------
+// Everything removed is renamed to <stamp>_<label> in a _trash folder: label is the project or slot name,
+// or <slot>_v<n>_<file> for a result.
+
+const STAMPED = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_(.+)$/;
+const RESULT_LABEL = /^(.+)_v(\d+)_(.+)$/;
+
+function parseEntry(entry: string): { label: string; trashedAt: number | null } {
+  const m = STAMPED.exec(entry);
+  if (!m) return { label: entry, trashedAt: null };
+  return { label: m[6]!, trashedAt: Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) };
+}
+
+const isFolder = (p: string) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+/** What is in a _trash folder, newest first. `projects` reads projects/_trash, where every folder is a project. */
+export function listTrash(trashDir: string, projects: boolean): TrashItem[] {
+  if (!existsSync(trashDir)) return [];
+  const items: TrashItem[] = readdirSync(trashDir).map((entry) => {
+    const { label, trashedAt } = parseEntry(entry);
+    const folder = isFolder(join(trashDir, entry));
+    if (projects) return { entry, kind: folder ? "project" : "other", name: label, trashedAt };
+    if (folder) return { entry, kind: "slot", name: label, trashedAt };
+    const r = RESULT_LABEL.exec(label);
+    if (r && mediaKind(r[3]!)) return { entry, kind: "result", name: r[3]!, slot: r[1]!, version: Number(r[2]), trashedAt };
+    return { entry, kind: "other", name: label, trashedAt };
+  });
+  return items.sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
+}
+
+const trashEntry = (trashDir: string, entry: string) => {
+  if (!entry || entry !== basename(entry) || !existsSync(join(trashDir, entry))) throw new UserError(`${entry} is not in _trash.`);
+  return join(trashDir, entry);
+};
+
+/** Puts a project from projects/_trash back under its own name; returns that name. */
+export function restoreTrashedProject(projectsDir: string, entry: string): string {
+  const path = trashEntry(join(projectsDir, TRASH_DIR), entry);
+  const { label } = parseEntry(entry);
+  restoreProject(join(projectsDir, label), path);
+  return label;
+}
+
+/** Puts a slot or a result from the project's _trash back where it came from; returns what came back. */
+export function restoreTrashed(projectDir: string, entry: string): string {
+  const path = trashEntry(join(projectDir, TRASH_DIR), entry);
+  const item = listTrash(join(projectDir, TRASH_DIR), false).find((i) => i.entry === entry)!;
+  if (item.kind === "slot") {
+    restoreSlot(projectDir, item.name, path);
+    return item.name;
+  }
+  if (item.kind === "result") {
+    const dir = versionDir(projectDir, item.slot!, item.version!);
+    mkdirSync(dir, { recursive: true });
+    if (existsSync(join(dir, item.name))) throw new UserError(`${item.slot} v${item.version} already has a ${item.name}; remove it first.`);
+    renameSync(path, join(dir, item.name));
+    syncFinal(projectDir, item.slot!);
+    return `${item.name} in ${item.slot} v${item.version}`;
+  }
+  throw new UserError(`${entry} is not a slot or a result, so the app cannot tell where it goes. Open the _trash folder to take it out by hand.`);
 }

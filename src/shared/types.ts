@@ -103,6 +103,8 @@ export interface Slot {
   /** Problems with the slot folder itself, such as a name agents were told not to use. */
   warnings: string[];
   createdAt: number;
+  /** Position in the project by age: 1 is the oldest slot. Numbers move up when an older slot is deleted. */
+  number: number;
 }
 
 export interface ProjectSummary {
@@ -137,11 +139,27 @@ export interface Preset {
   notes: string;
 }
 
+/** Something in a _trash folder: a whole project, a slot, or one result of a version. */
+export interface TrashItem {
+  /** The file or folder name inside _trash. */
+  entry: string;
+  kind: "project" | "slot" | "result" | "other";
+  /** The project or slot name, or the result's file name. */
+  name: string;
+  slot?: string;
+  version?: number;
+  /** Where to show it from, for a result the browser can display. */
+  url?: string;
+  trashedAt: number | null;
+}
+
 export interface AppState {
   projects: ProjectSummary[];
   presets: Preset[];
   ffmpeg: boolean;
   projectsDir: string;
+  /** Projects in projects/_trash. */
+  trashedProjects: number;
 }
 
 export interface NewVersionInput {

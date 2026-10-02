@@ -327,6 +327,7 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
         ...lateVersions(versions, approved).map((n) => `v${n}.md was written after v${approved} was approved, so it is ignored. Remove the approval to work on it.`),
       ],
       createdAt: versions[0] ? mtime(versions[0].path) : Math.floor(statSync(slotDir).birthtimeMs || statSync(slotDir).mtimeMs),
+      number: 0,
     });
   }
 
@@ -347,7 +348,9 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
     if (slot.waitingFor.length) slot.status = "waiting_input";
   }
 
-  return [...slots.values()].sort((a, b) => b.createdAt - a.createdAt || a.name.localeCompare(b.name));
+  const newestFirst = [...slots.values()].sort((a, b) => b.createdAt - a.createdAt || a.name.localeCompare(b.name));
+  newestFirst.forEach((slot, i) => (slot.number = newestFirst.length - i));
+  return newestFirst;
 }
 
 export function countStatuses(slots: Slot[]): Record<Status, number> {
