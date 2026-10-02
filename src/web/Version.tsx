@@ -14,7 +14,11 @@ function slotLightboxItems(slot: Slot): LightboxItem[] {
     v.results.map((c) => ({
       url: c.url,
       kind: c.kind,
-      caption: `${slot.name} v${v.n}, ${c.file}${v.selected === c.file && v.results.length > 1 ? " (selected)" : ""}`,
+      title: slot.name,
+      version: v.n,
+      file: c.file,
+      tags: slot.approved === v.n && v.selected === c.file ? ["Approved"] : [],
+      pickable: v.results.length > 1,
     })),
   );
 }
@@ -82,23 +86,32 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             {shown.kind === "image" && <CopyImageButton url={shown.url} />}
             {needsPick && <div className="mediabox-pick">The agent will pick one, or choose it yourself</div>}
           </div>
-          <div className="mediabox-bar">
-            <div className="thumbs">
-              {results.length > 1 &&
-                results.map((c) => (
+          {results.length > 1 && (
+            // Several results get a row of their own to choose from, apart from the file details and tools.
+            <div className="results-strip">
+              <span className="results-strip-label">
+                {results.length} results{version.selected ? "" : ": pick one"}
+              </span>
+              <div className="thumbs">
+                {results.map((c) => (
                   <div key={c.file} className={`thumb${c.file === version.selected ? " is-selected" : ""}${c.file === version.selected && version.selectedBy === "agent" ? " is-agent" : ""}`}>
                     <button
                       title={
                         c.file === version.selected
                           ? version.selectedBy === "agent"
                             ? `${c.file} is the agent's pick; click to make it yours`
-                            : `${c.file} is selected`
+                            : `${c.file} is your pick; click again to take it back`
                           : `Select ${c.file}`
                       }
-                      onClick={() => ctx.act(() => call("PUT", `${base}/selected`, { file: c.file }))}
+                      onClick={() => {
+                        // A second click on the human's own pick takes it back; the agent's pick becomes theirs.
+                        const unpick = c.file === version.selected && version.selectedBy === "human";
+                        ctx.act(() => call("PUT", `${base}/selected`, { file: unpick ? null : c.file }));
+                      }}
                     >
                       <Media item={c} />
                     </button>
+                    <span className="thumb-name">{c.file}</span>
                     {c.file === version.selected && (
                       <span className="thumb-check" aria-hidden="true">
                         ✓
@@ -106,9 +119,12 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
                     )}
                   </div>
                 ))}
+              </div>
             </div>
+          )}
+          <div className="mediabox-bar">
             <span className="mediabox-info" title={shown.file}>
-              {describe(shown)}
+              {describe(shown, true)}
             </span>
             <div className="mediabox-tools">
               {shown.kind === "video" && (
@@ -132,7 +148,9 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
               </button>
               <button
                 className="link danger"
-                onClick={() => ctx.act(() => call("DELETE", `${base}/results/${enc(shown.file)}`), `${shown.file} moved to _trash`)}
+                onClick={() =>
+                  ctx.undoable(() => call("DELETE", `${base}/results/${enc(shown.file)}`), `Removed ${shown.file} from "${slot.name}" v${version.n}`, `${shown.file} is back in "${slot.name}" v${version.n}`)
+                }
               >
                 Remove
               </button>
@@ -197,32 +215,36 @@ function Settings({ version }: { version: Version }) {
   if (m.resolution) rest.push(["Resolution", m.resolution]);
   for (const [k, v] of Object.entries(m.params)) rest.push([k, `${k}: ${v}`]);
   if (!m.type && !m.aspect_ratio && !m.model && rest.length === 0) return null;
+  // Information, not controls: a quiet row of facts with no boxes, so it never reads as buttons.
   // In the order they are set in the generator: image or video, aspect ratio, model, then the rest.
   return (
-    <ul className="chips" aria-label="Settings to choose in the generator">
-      {m.type && (
-        <li className={`chip chip-kind${kind ? ` is-${kind}` : ""}`} title="Image or video">
-          {kind && <KindIcon kind={kind} />}
-          {kind === "video" ? "Video" : kind === "image" ? "Image" : m.type}
-        </li>
-      )}
-      {m.aspect_ratio && (
-        <li className="chip chip-strong chip-icon" title="Aspect ratio">
-          <RatioIcon ratio={m.aspect_ratio} />
-          {m.aspect_ratio}
-        </li>
-      )}
-      {m.model && (
-        <li className="chip chip-strong" title="Model">
-          {m.model}
-        </li>
-      )}
-      {rest.map(([label, value], i) => (
-        <li key={i} className={`chip${STRONG_CHIPS.has(label) ? " chip-strong" : ""}`} title={label}>
-          {value}
-        </li>
-      ))}
-    </ul>
+    <div className="specs">
+      <span className="specs-label">Settings:</span>
+      <ul className="spec-list">
+        {m.type && (
+          <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`} title="Image or video">
+            {kind && <KindIcon kind={kind} />}
+            {kind === "video" ? "Video" : kind === "image" ? "Image" : m.type}
+          </li>
+        )}
+        {m.aspect_ratio && (
+          <li className="spec" title="Aspect ratio">
+            <RatioIcon ratio={m.aspect_ratio} />
+            {m.aspect_ratio}
+          </li>
+        )}
+        {m.model && (
+          <li className="spec" title="Model">
+            {m.model}
+          </li>
+        )}
+        {rest.map(([label, value], i) => (
+          <li key={i} className={`spec${STRONG_CHIPS.has(label) ? " spec-strong" : ""}`} title={label}>
+            {value}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -297,7 +319,12 @@ function InputTile({ input }: { input: ResolvedInput }) {
       {input.url && input.kind ? (
         <button
           className="input-thumb"
-          onClick={() => ctx.openLightbox([{ url: input.url!, kind: input.kind!, caption: `${label}: ${input.source}` }], 0)}
+          onClick={() =>
+            ctx.openLightbox(
+              [{ url: input.url!, kind: input.kind!, title: input.fromSlot ? input.source : name, version: input.sourceVersion ?? undefined, tags: [label], file: input.fromSlot ? undefined : input.source }],
+              0,
+            )
+          }
           draggable
           onDragStart={(e) => dragOut(e, input.url!, name)}
         >
@@ -447,10 +474,10 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
             ))}
           </div>
         )}
-        {(version.warnings.length > 0 || version.resultWarnings.length > 0 || (hasMedia && version.review)) && (
+        {(version.warnings.length > 0 || version.resultNotes.length > 0 || (hasMedia && version.review)) && (
           <div className="pop-row">
             {hasMedia && <AgentReview slot={slot} version={version} />}
-            <WarningChip label={`Result does not match v${version.n}.md`} items={version.resultWarnings} />
+            <WarningChip label="Doesn't match the settings" items={version.resultNotes} />
             <WarningChip label="Settings to check" items={version.warnings} />
           </div>
         )}
@@ -460,16 +487,16 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
           </p>
         )}
         <div className="prompt">
+          <Settings version={version} />
           <p className="prompt-text">{version.prompt || version.raw}</p>
           <div className="prompt-bar">
             <CopyPrompt slot={slot} version={version} />
-            <button className="link" onClick={() => ctx.openPrompt(slot, version)}>
+            <span className="prompt-count">{version.prompt.length.toLocaleString()} characters</span>
+            <button className="link prompt-more" onClick={() => ctx.openPrompt(slot, version)}>
               Show all
             </button>
-            <span className="prompt-count">{version.prompt.length.toLocaleString()} characters</span>
           </div>
         </div>
-        <Settings version={version} />
         {version.inputs.length > 0 && (
           <ul className="inputs">
             {version.inputs.map((input, i) => (

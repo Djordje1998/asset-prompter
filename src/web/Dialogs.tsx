@@ -1,19 +1,50 @@
 import { useEffect, useState } from "react";
 import type { NewVersionInput, Preset, Slot, Version } from "../shared/types";
+import { cloneName } from "../shared/names";
 import { useEscape } from "./hooks";
 import { Icon } from "./icons";
 import { formatBytes } from "./lib";
 import type { LightboxItem } from "./context";
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+/**
+ * A dialog title about one slot: what the dialog does, then the slot name, then its version as a chip,
+ * so a name ending in -v2 never runs into the version.
+ */
+export function SlotTitle({ action, slot, version }: { action?: string; slot: string; version?: number | null }) {
+  return (
+    <span className="slot-title">
+      {action && <span className="slot-title-action">{action}</span>}
+      <span className="slot-title-name">{slot}</span>
+      {version != null && <span className="card-version">v{version}</span>}
+    </span>
+  );
+}
+
+const titleText = (action: string | undefined, slot: string, version?: number | null) =>
+  [action, slot, version != null ? `v${version}` : null].filter(Boolean).join(" ");
+
+export function Modal({
+  title,
+  label,
+  onClose,
+  children,
+  wide,
+}: {
+  title: React.ReactNode;
+  /** The dialog's accessible name, when the title is not plain text. */
+  label?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   useEscape(onClose);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-label={title}>
+      <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-label={label ?? (typeof title === "string" ? title : undefined)}>
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="link" onClick={onClose}>
-            Close
+          <button className="modal-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+            <Icon name="x" size={12} />
           </button>
         </header>
         {children}
@@ -24,7 +55,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
 
 export function PromptDialog({ slot, version, onCopy, onClose }: { slot: Slot; version: Version; onCopy: () => void; onClose: () => void }) {
   return (
-    <Modal title={`${slot.name} v${version.n} prompt`} onClose={onClose} wide>
+    <Modal title={<SlotTitle action="Prompt" slot={slot.name} version={version.n} />} label={titleText("Prompt", slot.name, version.n)} onClose={onClose} wide>
       <pre className="prompt-full">{version.prompt || version.raw}</pre>
       <footer className="modal-foot">
         <button className="btn btn-primary" onClick={onCopy}>
@@ -46,16 +77,22 @@ interface MediaFacts {
 
 const typeOf = (url: string) => (url.split("?")[0]!.split(".").pop() ?? "").toUpperCase();
 
+/** Who picked a result: the human, the agent, nobody yet, or undefined when it is not one to pick from. */
+export type PickState = "human" | "agent" | null | undefined;
+
 export function Lightbox({
   items,
   start,
   onClose,
   onCopyImage,
+  pick,
 }: {
   items: LightboxItem[];
   start: number;
   onClose: () => void;
   onCopyImage?: (url: string) => void;
+  /** Read live from the slots, so a pick made here shows at once. */
+  pick?: { of: (item: LightboxItem) => PickState; toggle: (item: LightboxItem) => void };
 }) {
   const [index, setIndex] = useState(start);
   const [facts, setFacts] = useState<MediaFacts>({ width: null, height: null, bytes: null, seconds: null });
@@ -84,15 +121,25 @@ export function Lightbox({
       live = false;
     };
   }, [item.url]);
+  const picked = pick?.of(item);
+  const strip = items.length > 1;
+  // Thumbs of one slot are named by file, with the version when there are several; of many slots, by slot.
+  const oneSlot = new Set(items.map((i) => i.title)).size === 1;
+  const versions = new Set(items.map((i) => i.version)).size > 1;
+  const thumbName = (it: LightboxItem) =>
+    !oneSlot ? it.title : `${versions && it.version !== undefined ? `v${it.version} · ` : ""}${it.file ?? it.title}`;
   const meta = [
     facts.width && facts.height ? `${facts.width}×${facts.height}` : null,
-    typeOf(item.url) || null,
+    // A file name already says its type.
+    item.file ? null : typeOf(item.url) || null,
     facts.bytes !== null ? formatBytes(facts.bytes) : null,
     facts.seconds ? `${facts.seconds.toFixed(1)}s` : null,
   ].filter(Boolean);
   return (
-    <div className="overlay lightbox" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`overlay lightbox${strip ? " has-strip" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="lightbox-stage" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div className={`lightbox-frame${picked ? ` is-picked is-${picked}` : ""}`}>
+          {picked && <span className="lightbox-picked">✓ {picked === "agent" ? "Agent's pick" : "Selected"}</span>}
         {item.kind === "video" ? (
           <video
             key={item.url}
@@ -116,11 +163,45 @@ export function Lightbox({
             }}
           />
         )}
+        </div>
       </div>
+      {strip && (
+        <div className="lightbox-strip" role="tablist" aria-label="All results">
+          {items.map((it, i) => {
+            const state = pick?.of(it);
+            return (
+              <button
+                key={it.url}
+                role="tab"
+                aria-selected={i === index}
+                className={`lightbox-thumb${i === index ? " is-current" : ""}${state ? ` is-picked is-${state}` : ""}`}
+                onClick={() => setIndex(i)}
+                title={`${it.file ?? it.title}${state === "human" ? ", selected" : state === "agent" ? ", the agent's pick" : ""}${i === index ? ", showing now" : ""}`}
+              >
+                <span className="lightbox-thumb-media">
+                  {it.kind === "video" ? <video src={`${it.url}#t=0.1`} muted preload="metadata" /> : <img src={it.url} alt="" loading="lazy" />}
+                  {state && <span className="lightbox-thumb-check">✓</span>}
+                </span>
+                <span className="lightbox-thumb-name">{thumbName(it)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <footer className="lightbox-bar">
         <div className="lightbox-info">
-          <span className="lightbox-caption">{item.caption}</span>
-          <span className="lightbox-meta">{meta.join("  ·  ")}</span>
+          <div className="lightbox-title">
+            <span className="lightbox-caption" title={item.title}>
+              {item.title}
+            </span>
+            {item.version !== undefined && <span className="card-version">v{item.version}</span>}
+            {item.tags?.map((tag) => (
+              <span key={tag} className={`lightbox-tag${tag === "Approved" ? " is-approved" : ""}`}>
+                {tag}
+              </span>
+            ))}
+          </div>
+          <span className="lightbox-meta">{[item.file, ...meta].filter(Boolean).join("  ·  ")}</span>
         </div>
         <div className="lightbox-nav">
           {items.length > 1 && (
@@ -138,6 +219,16 @@ export function Lightbox({
           )}
         </div>
         <div className="lightbox-actions">
+          {picked !== undefined && pick && (
+            <button
+              className={`btn ${picked === "human" ? "btn-approve" : ""}`}
+              onClick={() => pick.toggle(item)}
+              title={picked === "human" ? "Your pick. Click to take it back." : picked === "agent" ? "The agent's pick. Click to make it yours." : "Select this result"}
+            >
+              <Icon name="check" />
+              {picked === "human" ? "Selected" : "Select"}
+            </button>
+          )}
           {onCopyImage && item.kind === "image" && (
             <button className="btn btn-primary" onClick={() => onCopyImage(item.url)}>
               <Icon name="copyimage" />
@@ -284,7 +375,7 @@ export function NewVersionDialog({ slot, presets, onCreate, onClose }: { slot: S
   );
   const next = (latest?.n ?? 0) + 1;
   return (
-    <Modal title={`${slot.name}: write v${next}`} onClose={onClose} wide>
+    <Modal title={<SlotTitle action="New version" slot={slot.name} version={next} />} label={titleText("New version", slot.name, next)} onClose={onClose} wide>
       <form
         className="form"
         onSubmit={(e) => {
@@ -298,6 +389,54 @@ export function NewVersionDialog({ slot, presets, onCreate, onClose }: { slot: S
           <button className="btn btn-primary" type="submit">
             Save v{next}
           </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Copies a whole slot under a new name; the offered name counts up a -vN suffix. A Done slot can also be
+ * copied without its approval, so the copy starts out open for a change request.
+ */
+export function CloneDialog({
+  slot,
+  taken,
+  onClone,
+  onClose,
+}: {
+  slot: Slot;
+  taken: string[];
+  onClone: (name: string, removeApproval: boolean) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(() => cloneName(slot.name, taken));
+  return (
+    <Modal title={<SlotTitle action="Clone" slot={slot.name} />} label={titleText("Clone", slot.name)} onClose={onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onClone(name, false);
+        }}
+      >
+        <Field label="Name of the copy" hint="The whole slot is copied: prompts, results, reviews and approval. The original stays as it is.">
+          <input autoFocus required value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))} onFocus={(e) => e.target.select()} />
+        </Field>
+        <footer className="modal-foot">
+          <button className="btn btn-primary" type="submit">
+            Clone
+          </button>
+          {slot.approved !== null && (
+            <button
+              className="btn"
+              type="button"
+              onClick={(e) => e.currentTarget.form?.reportValidity() && onClone(name, true)}
+              title="The copy is not approved, so you can ask for changes on it right away"
+            >
+              Clone and remove approval
+            </button>
+          )}
         </footer>
       </form>
     </Modal>

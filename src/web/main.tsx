@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { AppState, Slot, Status, Version } from "../shared/types";
-import { Lightbox, Modal, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
+import { CloneDialog, Lightbox, Modal, SlotTitle, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
 import doneArt from "./art/empty-done.png";
 import progressArt from "./art/empty-in-progress.png";
 import { copiedKey, markPromptCopied } from "./copied";
@@ -9,7 +9,7 @@ import { AppContext, type Ctx, type LightboxItem } from "./context";
 import { DoneTile, VariantsList, finalResult } from "./Done";
 import { readStored, writeStored } from "./hooks";
 import { Icon, Logo } from "./icons";
-import { STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
+import { CHANGED_EVENT, STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
 import { ProjectMenu } from "./ProjectMenu";
 import { STATUS_ICON } from "./shared";
 import { SlotCard } from "./SlotCard";
@@ -19,10 +19,14 @@ type Filter = Status | "all";
 /** Filters inside the In progress tab; approved slots live in the Done tab. */
 const FILTERS: Filter[] = ["all", "waiting_generation", "waiting_agent", "waiting_review", "waiting_input"];
 
+/** How long a removal can be undone from its toast. */
+const UNDO_MS = 5000;
+
 type Dialog =
   | { kind: "project" }
   | { kind: "slot" }
   | { kind: "version"; slot: Slot }
+  | { kind: "clone"; slot: Slot }
   | { kind: "prompt"; slot: Slot; version: Version }
   | { kind: "lightbox"; items: LightboxItem[]; index: number }
   | { kind: "instructions" }
@@ -88,7 +92,7 @@ function App() {
   const [variantsOf, setVariantsOf] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [sound, setSound] = useState(readStored("sound") !== "off");
-  const [toast, setToast] = useState<{ message: string; isError: boolean; id: number } | null>(null);
+  const [toast, setToast] = useState<{ message: string; isError: boolean; id: number; undo?: () => void } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const pasteTarget = useRef<{ slot: string; n: number } | null>(null);
   const lastPending = useRef<number | null>(null);
@@ -98,12 +102,40 @@ function App() {
   const project = state?.projects.find((p) => p.id === projectId) ?? state?.projects[0] ?? null;
   const currentId = project?.id ?? null;
 
-  const showToast = useCallback((message: string, isError = false) => setToast({ message, isError, id: Date.now() }), []);
+  const showToast = useCallback((message: string, isError = false, undo?: () => void) => setToast({ message, isError, id: Date.now(), undo }), []);
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), toast.isError ? 6000 : 2200);
+    const timer = setTimeout(() => setToast(null), toast.undo ? UNDO_MS : toast.isError ? 6000 : 2200);
     return () => clearTimeout(timer);
   }, [toast]);
+  /** The last removal, undoable with Ctrl+Z after its toast is gone, until the next change replaces it. */
+  const lastUndo = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const forget = () => {
+      lastUndo.current = null;
+      setToast((t) => (t?.undo ? null : t));
+    };
+    window.addEventListener(CHANGED_EVENT, forget);
+    return () => window.removeEventListener(CHANGED_EVENT, forget);
+  }, []);
+  const runUndo = () => {
+    const undo = lastUndo.current;
+    lastUndo.current = null;
+    setToast(null);
+    undo?.();
+  };
+  // Ctrl+Z (Cmd+Z) undoes the last removal, unless the key is meant for a text field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+      if ((e.target as HTMLElement).closest?.("input, textarea, [contenteditable]")) return;
+      if (!lastUndo.current) return;
+      e.preventDefault();
+      runUndo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -193,10 +225,18 @@ function App() {
         project,
         act,
         toast: showToast,
+        undoable: (fn, done, undone) =>
+          act(async () => {
+            const { undo } = await fn();
+            const run = () => act(() => call("POST", `/api/projects/${enc(project.id)}/undo/${enc(undo)}`), undone);
+            lastUndo.current = run;
+            showToast(done, false, run);
+          }),
         upload,
         openLightbox: (items, index) => setDialog({ kind: "lightbox", items, index }),
         openPrompt: (slot, version) => setDialog({ kind: "prompt", slot, version }),
         openNewVersion: (slot) => setDialog({ kind: "version", slot }),
+        openClone: (slot) => setDialog({ kind: "clone", slot }),
         openVariants: (slot) => setVariantsOf(slot.name),
         setPasteTarget: (target) => (pasteTarget.current = target),
       },
@@ -230,7 +270,8 @@ function App() {
   const news = count("waiting_agent") + newApprovals;
   const doneItems: LightboxItem[] = done.flatMap((s) => {
     const final = finalResult(s);
-    return final ? [{ url: final.url, kind: final.kind, caption: `${s.name} v${s.approved}` }] : [];
+    // Everything in Done is approved, so no tag says so.
+    return final ? [{ url: final.url, kind: final.kind, title: s.name, version: s.approved ?? undefined, file: final.file }] : [];
   });
   const detailSlot = detail ? (slots ?? []).find((s) => s.name === detail) : undefined;
   const variantsSlot = variantsOf ? (slots ?? []).find((s) => s.name === variantsOf && s.variants.length > 0) : undefined;
@@ -395,7 +436,7 @@ function App() {
                 key={slot.name}
                 slot={slot}
                 onOpen={() => {
-                  const i = doneItems.findIndex((item) => item.caption === `${slot.name} v${slot.approved}`);
+                  const i = doneItems.findIndex((item) => item.title === slot.name);
                   if (i >= 0) setDialog({ kind: "lightbox", items: doneItems, index: i });
                 }}
                 onDetails={() => setDetail(slot.name)}
@@ -409,14 +450,19 @@ function App() {
       </main>
 
       {detailSlot && ctx && (
-        <Modal title={detailSlot.name} onClose={() => setDetail(null)} wide>
+        <Modal title={<SlotTitle action="Details" slot={detailSlot.name} />} label={`Details ${detailSlot.name}`} onClose={() => setDetail(null)} wide>
           <div className="detail-body">
             <SlotCard slot={detailSlot} collapsible={false} />
           </div>
         </Modal>
       )}
       {variantsSlot && ctx && (
-        <Modal title={`${variantsSlot.name}: ${variantsSlot.variants.length} ${variantsSlot.variants.length === 1 ? "variant" : "variants"}`} onClose={() => setVariantsOf(null)} wide>
+        <Modal
+          title={<SlotTitle action={`${variantsSlot.variants.length} ${variantsSlot.variants.length === 1 ? "variant" : "variants"} of`} slot={variantsSlot.name} />}
+          label={`Variants of ${variantsSlot.name}`}
+          onClose={() => setVariantsOf(null)}
+          wide
+        >
           <VariantsList slot={variantsSlot} />
         </Modal>
       )}
@@ -433,7 +479,27 @@ function App() {
         </Modal>
       )}
       {dialog?.kind === "lightbox" && (
-        <Lightbox items={dialog.items} start={dialog.index} onClose={close} onCopyImage={(url) => act(() => copyImage(url), "Image copied")} />
+        <Lightbox
+          items={dialog.items}
+          start={dialog.index}
+          onClose={close}
+          onCopyImage={(url) => act(() => copyImage(url), "Image copied")}
+          pick={{
+            of: (item) => {
+              if (!item.pickable) return undefined;
+              const v = (slots ?? []).find((s) => s.name === item.title)?.versions.find((x) => x.n === item.version);
+              if (!v) return undefined;
+              return v.selected === item.file ? (v.selectedBy ?? "human") : null;
+            },
+            toggle: (item) => {
+              if (!project || item.version === undefined) return;
+              const v = (slots ?? []).find((s) => s.name === item.title)?.versions.find((x) => x.n === item.version);
+              // A second click on the human's own pick takes it back; the agent's pick becomes theirs.
+              const unpick = v?.selected === item.file && v?.selectedBy === "human";
+              act(() => call("PUT", `${versionUrl(project.id, item.title, item.version!)}/selected`, { file: unpick ? null : item.file }));
+            },
+          }}
+        />
       )}
       {dialog?.kind === "prompt" && (
         <PromptDialog slot={dialog.slot} version={dialog.version} onClose={close} onCopy={() =>
@@ -482,10 +548,33 @@ function App() {
           }
         />
       )}
+      {dialog?.kind === "clone" && project && (
+        <CloneDialog
+          slot={dialog.slot}
+          taken={(slots ?? []).map((s) => s.name)}
+          onClose={close}
+          onClone={(name, removeApproval) =>
+            act(async () => {
+              await call("POST", `${slotUrl(project.id, dialog.slot.name)}/clone`, { name });
+              if (removeApproval) await call("PUT", `${slotUrl(project.id, name)}/approval`, { version: null });
+              close();
+            }, removeApproval ? `${dialog.slot.name} copied to ${name}, without approval` : `${dialog.slot.name} copied to ${name}`)
+          }
+        />
+      )}
 
       {toast && (
         <div key={toast.id} className={`toast${toast.isError ? " is-error" : ""}`} role="status">
-          {toast.message}
+          <span className="toast-message">{toast.message}</span>
+          {toast.undo && (
+            <button className="toast-undo" onClick={runUndo} title="Undo (Ctrl+Z)">
+              Undo
+            </button>
+          )}
+          <button className="toast-close" onClick={() => setToast(null)} aria-label="Dismiss">
+            <Icon name="x" size={10} />
+          </button>
+          {toast.undo && <span className="toast-timer" style={{ animationDuration: `${UNDO_MS}ms` }} aria-hidden="true" />}
         </div>
       )}
     </AppContext.Provider>

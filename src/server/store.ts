@@ -231,21 +231,24 @@ function scanVersion(projectId: string, root: string, slotDir: string, n: number
     review: readReview(dir),
     errors,
     warnings,
-    resultWarnings: resultChecks(`v${n}.md`, meta, results),
+    resultWarnings: resultChecks(`v${n}.md asks for`, meta, results),
+    resultNotes: resultChecks("the settings ask for", meta, results),
     path,
     dir,
   };
 }
 
-function slotStatus(slotDir: string, versions: Version[], approved: number | null): Status {
+/** Versions written into a Done slot; agents must not, and the app ignores them until the approval is removed. */
+function lateVersions(versions: Version[], approved: number | null): number[] {
+  if (approved === null || !versions.some((v) => v.n === approved)) return [];
+  return versions.filter((v) => v.n > approved).map((v) => v.n);
+}
+
+function slotStatus(versions: Version[], approved: number | null): Status {
   const latest = versions.at(-1);
   if (!latest) return "empty";
-  if (approved !== null && versions.some((v) => v.n === approved)) {
-    // A version written after the approval reopens the slot.
-    const approvedAt = mtime(join(slotDir, APPROVED_FILE));
-    const newer = versions.some((v) => v.n > approved && mtime(v.path) > approvedAt);
-    if (!newer) return "approved";
-  }
+  // The human's approval is final: only the human reopens a slot, by removing it.
+  if (approved !== null && versions.some((v) => v.n === approved)) return "approved";
   if (latest.results.length === 0) return "waiting_generation";
   // Every result goes to the agent first; the human confirms what the agent approves.
   const review = latest.review;
@@ -309,7 +312,7 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
       name,
       description: description ? parseDoc(description).body || null : null,
       path: slotDir,
-      status: slotStatus(slotDir, versions, approved),
+      status: slotStatus(versions, approved),
       versions,
       approved: approved !== null && versions.some((v) => v.n === approved) ? approved : null,
       waitingFor: [],
@@ -319,7 +322,10 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
         return { file, kind: mediaKind(file)!, url: fileUrl(projectId, root, abs), path: abs, frames: [], info: probeMedia(abs), bytes: fileSize(abs) };
       }),
       // Only flagged, never renamed: other files and agents may already refer to the folder by this name.
-      warnings: SLOT_NAME.test(name) ? [] : [`"${name}" is not a valid slot name: use lowercase letters, digits and hyphens, like hero-banner.`],
+      warnings: [
+        ...(SLOT_NAME.test(name) ? [] : [`"${name}" is not a valid slot name: use lowercase letters, digits and hyphens, like hero-banner.`]),
+        ...lateVersions(versions, approved).map((n) => `v${n}.md was written after v${approved} was approved, so it is ignored. Remove the approval to work on it.`),
+      ],
       createdAt: versions[0] ? mtime(versions[0].path) : Math.floor(statSync(slotDir).birthtimeMs || statSync(slotDir).mtimeMs),
     });
   }

@@ -60,23 +60,26 @@ export interface CheckedResult {
   info: MediaInfo | null;
 }
 
-/** Plain-language differences between what the version file asked for and what was dropped in. */
-export function resultChecks(versionName: string, meta: VersionMeta, results: CheckedResult[]): string[] {
+/**
+ * Plain-language differences between what the version file asked for and what was dropped in.
+ * `asksFor` names who asked, for the reader: "v1.md asks for" for an agent, "the settings ask for" in the app.
+ */
+export function resultChecks(asksFor: string, meta: VersionMeta, results: CheckedResult[]): string[] {
   const warnings: string[] = [];
   if (results.length === 0) return warnings;
   const seconds = parseSeconds(meta.duration);
   const ratio = parseRatio(meta.aspect_ratio);
   for (const r of results) {
     if (meta.type === "image" || meta.type === "video") {
-      if (r.kind !== meta.type) warnings.push(`${r.file} is ${r.kind === "image" ? "an image" : "a video"}; ${versionName} asks for ${meta.type === "image" ? "an image" : "a video"}.`);
+      if (r.kind !== meta.type) warnings.push(`${r.file} is ${r.kind === "image" ? "an image" : "a video"}; ${asksFor} ${meta.type === "image" ? "an image" : "a video"}.`);
     }
     if (!r.info) continue;
     if (r.kind === "video" && seconds !== null && r.info.duration !== null && Math.abs(r.info.duration - seconds) > 0.6) {
-      warnings.push(`${r.file} is ${r.info.duration.toFixed(1)}s; ${versionName} asks for ${meta.duration}. Check the model and length chosen in the generator.`);
+      warnings.push(`${r.file} is ${r.info.duration.toFixed(1)}s; ${asksFor} ${meta.duration}. Check the model and length chosen in the generator.`);
     }
     const { width, height } = r.info;
     if (ratio !== null && width && height && Math.abs(width / height / ratio - 1) > 0.03) {
-      warnings.push(`${r.file} is ${width}x${height} (${describeRatio(width, height)}); ${versionName} asks for ${meta.aspect_ratio}.`);
+      warnings.push(`${r.file} is ${width}x${height} (${describeRatio(width, height)}); ${asksFor} ${meta.aspect_ratio}.`);
     }
   }
   return warnings;

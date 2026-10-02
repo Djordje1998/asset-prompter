@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { NewVersionInput } from "../shared/types";
 import { parseDoc, writeDoc } from "./frontmatter";
@@ -50,12 +50,15 @@ const MIME_EXT: Record<string, string> = {
   "video/quicktime": ".mov",
 };
 
-function trash(projectDir: string, source: string, label: string): void {
+/** Moves a file or folder into _trash and returns where it went. */
+function trash(projectDir: string, source: string, label: string): string {
   const dir = join(projectDir, TRASH_DIR);
   mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = join(dir, `${stamp}_${label}`);
   try {
-    renameSync(source, join(dir, `${stamp}_${label}`));
+    renameSync(source, target);
+    return target;
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "EBUSY" || code === "EPERM" || code === "EACCES") {
@@ -129,20 +132,58 @@ export async function addResults(projectDir: string, slot: string, n: number, fi
   return written;
 }
 
-export function deleteResult(projectDir: string, slot: string, n: number, file: string): void {
+/** What removing a result changed, so it can be undone. */
+export interface RemovedResult {
+  trashed: string;
+  /** It was the human's pick. */
+  selected: boolean;
+  /** The approval in place before, which removing the final result drops. */
+  approved: number | null;
+}
+
+export function deleteResult(projectDir: string, slot: string, n: number, file: string): RemovedResult {
   const dir = versionDir(projectDir, slot, n);
   const path = join(dir, file);
   if (!existsSync(path) || !mediaKind(file)) throw new UserError(`${file} does not exist in ${slot} v${n}.`);
-  trash(projectDir, path, `${slot}_v${n}_${file}`);
+  const slotDir = join(projectDir, slot);
+  const approved = readApproved(slotDir);
+  const wasFinal = approved === n && selection(dir).file === file;
+  const trashed = trash(projectDir, path, `${slot}_v${n}_${file}`);
+  // Removing the approved result takes the approval with it, even when one other result is left:
+  // the human approved that file, not whichever one remains.
+  if (wasFinal) unlinkSync(join(slotDir, APPROVED_FILE));
   rmSync(framesDirOf(path), { recursive: true, force: true });
   // A pick of a removed file would only mislead the agent.
   const picked = join(dir, SELECTED_FILE);
-  if (existsSync(picked) && readFileSync(picked, "utf8").trim() === file) unlinkSync(picked);
+  const selected = existsSync(picked) && readFileSync(picked, "utf8").trim() === file;
+  if (selected) unlinkSync(picked);
+  syncFinal(projectDir, slot);
+  return { trashed, selected, approved };
+}
+
+/** Undoes deleteResult: the file comes back from _trash, with the pick and approval it took along. */
+export function restoreResult(projectDir: string, slot: string, n: number, file: string, removed: RemovedResult): void {
+  const dir = versionDir(projectDir, slot, n);
+  const path = join(dir, file);
+  if (!existsSync(removed.trashed)) throw new UserError(`${file} is no longer in _trash.`);
+  if (existsSync(path)) throw new UserError(`A new ${file} was added to ${slot} v${n} since; remove it first.`);
+  mkdirSync(dir, { recursive: true });
+  renameSync(removed.trashed, path);
+  if (removed.selected) writeFileSync(join(dir, SELECTED_FILE), file + "\n");
+  const slotDir = join(projectDir, slot);
+  if (removed.approved !== null && readApproved(slotDir) === null) writeFileSync(join(slotDir, APPROVED_FILE), `v${removed.approved}\n`);
   syncFinal(projectDir, slot);
 }
 
-export function setSelected(projectDir: string, slot: string, n: number, file: string): void {
+/** The human's pick among several results; null takes it back, so the agent picks again. */
+export function setSelected(projectDir: string, slot: string, n: number, file: string | null): void {
   const dir = versionDir(projectDir, slot, n);
+  if (file === null) {
+    // Without a pick an approved version with several results has no final file, so it stays.
+    if (readApproved(join(projectDir, slot)) === n) throw new UserError(`v${n} is approved with this pick. Remove the approval first.`);
+    rmSync(join(dir, SELECTED_FILE), { force: true });
+    return;
+  }
   if (!listResultFiles(dir).includes(file)) throw new UserError(`${file} does not exist in ${slot} v${n}.`);
   writeFileSync(join(dir, SELECTED_FILE), file + "\n");
   syncFinal(projectDir, slot);
@@ -173,22 +214,48 @@ export function setApproval(projectDir: string, slot: string, n: number | null):
   syncFinal(projectDir, slot);
 }
 
-/** Keeps final.<ext> equal to the approved version's selected result, and drops the approval if that is gone. */
+/**
+ * Keeps final.<ext> equal to the approved version's selected result, and drops the approval if that is gone.
+ * Without an approval final.<ext> stays as the last approved result, so whatever already uses it keeps
+ * working while the slot is reworked; the next approval replaces it.
+ */
 export function syncFinal(projectDir: string, slot: string): void {
   const slotDir = join(projectDir, slot);
   const approved = readApproved(slotDir);
   const dir = approved === null ? null : join(slotDir, `v${approved}`);
   const chosen = dir ? selection(dir).file : null;
-  const target = chosen ? `final${extname(chosen).toLowerCase()}` : null;
+  if (!chosen) {
+    if (approved !== null) unlinkSync(join(slotDir, APPROVED_FILE));
+    return;
+  }
+  const target = `final${extname(chosen).toLowerCase()}`;
   for (const f of readdirSync(slotDir)) {
     if (/^final\.[^.]+$/.test(f) && f !== target) unlinkSync(join(slotDir, f));
   }
-  if (chosen && target) copyFileSync(join(dir!, chosen), join(slotDir, target));
-  else if (approved !== null) unlinkSync(join(slotDir, APPROVED_FILE));
+  copyFileSync(join(dir!, chosen), join(slotDir, target));
 }
 
-export function trashSlot(projectDir: string, slot: string): void {
+/** A full copy of a slot under a new name, to take further without touching the original. */
+export function cloneSlot(projectDir: string, from: string, to: string): void {
+  const source = join(projectDir, from);
+  const target = join(projectDir, to);
+  if (!existsSync(source)) throw new UserError(`Slot "${from}" does not exist.`);
+  if (existsSync(target)) throw new UserError(`A slot named "${to}" already exists.`);
+  // Timestamps decide whose turn it is (a result newer than its review, for one), so they are kept.
+  cpSync(source, target, { recursive: true, preserveTimestamps: true });
+}
+
+/** Moves a slot into _trash and returns where it went. */
+export function trashSlot(projectDir: string, slot: string): string {
   const slotDir = join(projectDir, slot);
   if (!existsSync(slotDir)) throw new UserError(`Slot "${slot}" does not exist.`);
-  trash(projectDir, slotDir, basename(slotDir));
+  return trash(projectDir, slotDir, basename(slotDir));
+}
+
+/** Undoes trashSlot. */
+export function restoreSlot(projectDir: string, slot: string, trashed: string): void {
+  const slotDir = join(projectDir, slot);
+  if (!existsSync(trashed)) throw new UserError(`${slot} is no longer in _trash.`);
+  if (existsSync(slotDir)) throw new UserError(`A new slot named "${slot}" was made since.`);
+  renameSync(trashed, slotDir);
 }

@@ -42,10 +42,8 @@ const results = async (secondsAgo = 120) => {
 
 /** Builds a slot named "hero" in the state one row describes, and nothing earlier in the table. */
 const fixtures: Record<string, () => Promise<void> | void> = {
-  "`APPROVED` was modified after the current `vN.md`": async () => {
+  "`APPROVED` exists": async () => {
     await results();
-    addVersion(root(), "hero", { ...image, changes: "Another try." });
-    age(join(root(), "hero", "v2.md"), 60);
     setApproval(root(), "hero", 1);
   },
   "current `vN/` has no results and a `slot:` input is not approved yet": async () => {
@@ -95,12 +93,17 @@ test("the first matching row decides: an approval outranks a later change reques
   expect(findSlot(root()).status).toBe("approved");
 });
 
-test("a version written after the approval reopens the slot", async () => {
+test("a version written into a Done slot is ignored and flagged; removing the approval reopens it", async () => {
   await results();
   setApproval(root(), "hero", 1);
   age(join(root(), "hero", "APPROVED"), 60);
   addVersion(root(), "hero", { ...image, changes: "Another try." });
+  expect(findSlot(root()).status).toBe("approved");
+  expect(findSlot(root()).warnings).toEqual(["v2.md was written after v1 was approved, so it is ignored. Remove the approval to work on it."]);
+
+  setApproval(root(), "hero", null);
   expect(findSlot(root()).status).toBe("waiting_generation");
+  expect(findSlot(root()).warnings).toEqual([]);
 });
 
 test("an approved slot: input unblocks the slot that uses it", async () => {

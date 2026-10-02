@@ -923,7 +923,33 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
   font: 600 14px/1.3 var(--display);
+  text-align: left;
+  cursor: copy;
+}
+
+.tile-name:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--edge-strong);
+  text-underline-offset: 3px;
+}
+
+/* The approved version, set into the picture's corner like part of the frame, so it costs no room in the bar. */
+.tile-version {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 1px 9px 0 8px;
+  background: var(--card);
+  color: var(--text);
+  border-radius: 0 6px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
 }
 
 .tile-bar .card-copy {
@@ -1068,12 +1094,11 @@ button {
   gap: 6px;
   background: var(--tint);
   color: var(--tone);
-  border: 1px solid var(--tint-edge);
-  border-radius: 4px;
-  padding: 0 8px;
+  border-radius: 999px;
+  padding: 0 10px 0 8px;
   font-weight: 600;
   font-size: 12px;
-  line-height: 20px;
+  line-height: 22px;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
@@ -1092,10 +1117,20 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* The version shown, as a chip of its own so it does not read as part of the slot name (hero-v2, version 1). */
 .card-version {
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+  border-radius: 999px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .card-toggle,
@@ -1297,10 +1332,52 @@ button {
   border-top: var(--line);
 }
 
+/* Several results: their own row under the picture, apart from the file details and tools. */
+.results-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--well);
+  border-top: var(--line);
+}
+
+.results-strip-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .thumbs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+  /* Room for the check mark that sits over each thumb's corner. */
+  padding: 4px 4px 2px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.thumb {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.thumb-name {
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.thumb.is-selected .thumb-name {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .thumb {
@@ -1309,8 +1386,8 @@ button {
 
 .thumb button {
   display: block;
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   background: var(--ink);
   border: 1px solid var(--edge);
@@ -1431,38 +1508,73 @@ button {
 
 /* ---- settings, prompt, inputs ---- */
 
-.chips {
+/*
+  Three kinds of thing, each with its own shape, so nothing informational looks clickable:
+  buttons are boxes with an edge and a hard shadow; labels (status, version) are borderless pills;
+  generator settings are plain facts in a row, split by thin rules.
+*/
+/* The head of the prompt box: what to choose in the generator before pasting the prompt below it. */
+.specs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 14px;
+  border-bottom: var(--line);
 }
 
-.chip {
-  border: var(--line);
-  border-radius: 4px;
-  padding: 1px 9px;
-  background: var(--well);
+.specs-label {
   color: var(--muted);
+  font-size: 13px;
   font-weight: 500;
+}
+
+.spec-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spec {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  font-weight: 600;
   font-size: 13px;
   line-height: 20px;
   cursor: default;
 }
 
-.chip-icon,
-.chip-kind {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.spec + .spec::before {
+  content: "";
+  width: 1px;
+  height: 12px;
+  margin: 0 10px 0 5px;
+  background: var(--edge-strong);
 }
 
 /* Image or video: a colour of its own, so it is never mistaken for the other. */
-.chip-kind {
+.spec-kind {
   --tone: var(--muted);
-  background: color-mix(in srgb, var(--tone) 16%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 50%, transparent);
   color: var(--tone);
-  font-weight: 600;
+}
+
+.spec-kind.is-image {
+  --tone: var(--image);
+}
+
+.spec-kind.is-video {
+  --tone: var(--video);
+}
+
+/* The setting easiest to miss in the generator. */
+.spec-strong {
+  color: var(--primary);
 }
 
 .mediabox-icon.is-image {
@@ -1473,20 +1585,7 @@ button {
   --tone: var(--video);
 }
 
-.chip-kind.is-image {
-  --tone: var(--image);
-}
 
-.chip-kind.is-video {
-  --tone: var(--video);
-}
-
-.chip-strong {
-  background: var(--card-hover);
-  border-color: var(--edge-strong);
-  color: var(--text);
-  font-weight: 600;
-}
 
 .changes {
   color: var(--text);
@@ -1537,6 +1636,11 @@ button {
   color: var(--faint);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Next to the count, and as small: a way to read the rest, not an action on the prompt. */
+.prompt-more {
+  font-size: 12px;
 }
 
 .inputs {
@@ -1973,6 +2077,45 @@ main.blank {
   font: 700 17px/1.3 var(--display);
 }
 
+.slot-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.slot-title-action {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.slot-title-name {
+  overflow-wrap: anywhere;
+}
+
+.modal-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--card-hover);
+  border-color: var(--edge);
+  color: var(--text);
+}
+
 .modal-foot {
   display: flex;
   align-items: center;
@@ -2096,13 +2239,143 @@ main.blank {
   padding: 20px;
 }
 
+/* Wraps the picture so the pick can be marked on it; the picture is sized against the screen minus the bars. */
+.lightbox-frame {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 .lightbox-stage img,
 .lightbox-stage video {
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 110px);
   object-fit: contain;
   border: var(--line);
   box-shadow: var(--shadow);
+}
+
+.lightbox.has-strip .lightbox-stage img,
+.lightbox.has-strip .lightbox-stage video {
+  max-height: calc(100vh - 220px);
+}
+
+/* The picked result: a frame in its colour and a label on the picture itself. */
+.lightbox-frame.is-picked img,
+.lightbox-frame.is-picked video {
+  border-color: var(--pick);
+  box-shadow: 0 0 0 3px var(--pick), var(--shadow);
+}
+
+.lightbox-frame.is-human,
+.lightbox-thumb.is-human {
+  --pick: var(--approved);
+}
+
+.lightbox-frame.is-agent,
+.lightbox-thumb.is-agent {
+  --pick: var(--agent);
+}
+
+.lightbox-picked {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  padding: 3px 12px 4px 10px;
+  background: var(--pick);
+  color: var(--ink);
+  border-radius: 0 0 8px 0;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* Every result in a row: the one showing has a white frame, the picked one a check in its colour. */
+.lightbox-strip {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 20px 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.lightbox-thumb {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.lightbox-thumb-media {
+  position: relative;
+  display: block;
+  width: 96px;
+  height: 60px;
+  background: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  overflow: hidden;
+  opacity: 0.55;
+}
+
+.lightbox-thumb-media img,
+.lightbox-thumb-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lightbox-thumb:hover .lightbox-thumb-media {
+  opacity: 0.85;
+}
+
+.lightbox-thumb.is-picked .lightbox-thumb-media {
+  opacity: 0.85;
+  border-color: var(--pick);
+}
+
+.lightbox-thumb.is-current .lightbox-thumb-media {
+  opacity: 1;
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+.lightbox-thumb-check {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--pick);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.lightbox-thumb-name {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.lightbox-thumb.is-current .lightbox-thumb-name {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Info on the left, navigation in the middle, actions on the right. */
@@ -2125,7 +2398,31 @@ main.blank {
   min-width: 0;
 }
 
+.lightbox-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lightbox-tag {
+  --tone: var(--muted);
+  flex: none;
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.lightbox-tag.is-approved {
+  --tone: var(--approved);
+}
+
 .lightbox-caption {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2201,9 +2498,76 @@ main.blank {
   border-left: 3px solid var(--tone);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 8px 14px;
+  padding: 6px 8px 6px 14px;
   font-weight: 500;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.toast-message {
+  min-width: 0;
+}
+
+.toast-undo {
+  flex: none;
+  padding: 2px 10px;
+  background: none;
+  border: 1px solid var(--edge-strong);
+  border-radius: 4px;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-undo:hover {
+  background: var(--card-hover);
+  border-color: var(--primary);
+}
+
+.toast-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  background: var(--card-hover);
+  border-color: var(--edge);
+  color: var(--text);
+}
+
+/* Shrinks over the seconds the removal can still be undone. */
+.toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--primary);
+  transform-origin: left;
+  animation: toast-timer linear forwards;
+}
+
+@keyframes toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 .toast.is-error {
@@ -2414,4 +2778,8 @@ video.is-loading {
 
 .feed.is-compact .prompt-bar {
   padding: 6px 10px;
+}
+
+.feed.is-compact .specs {
+  padding: 5px 10px;
 }

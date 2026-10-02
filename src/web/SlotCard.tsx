@@ -25,8 +25,9 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
     writeStored(key, collapsed ? null : "1");
     setCollapsed(!collapsed);
   };
-  const latest = slot.versions.at(-1);
-  const older = slot.versions.slice(0, -1).reverse();
+  // A Done slot shows its approved version first: anything written after it is ignored until it is reopened.
+  const latest = slot.versions.find((v) => v.n === slot.approved) ?? slot.versions.at(-1);
+  const older = slot.versions.filter((v) => v !== latest).reverse();
   const collapsedThumb = latest ? (latest.results.find((c) => c.file === latest.selected) ?? latest.results[0]) : undefined;
   const toggle = (n: number) =>
     setOpen((prev) => {
@@ -49,12 +50,19 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
         </span>
         <h2>{slot.name}</h2>
         <CopyName name={slot.name} />
-        {latest && <span className="card-version">v{latest.n}</span>}
+        {latest && (
+          <span className="card-version" title={`${slot.versions.length} ${slot.versions.length === 1 ? "version" : "versions"} in this slot`}>
+            v{latest.n}
+          </span>
+        )}
         <WarningChip label="Name to check" items={slot.warnings} />
         {collapsed && collapsedThumb && <Media item={collapsedThumb} className="card-thumb" />}
         <div className="card-tools">
           <button className="link" onClick={() => ctx.openNewVersion(slot)}>
             New version
+          </button>
+          <button className="link" onClick={() => ctx.openClone(slot)}>
+            Clone
           </button>
           <button className="link" onClick={() => ctx.act(() => copyText(slot.path), "Slot path copied")}>
             Copy path
@@ -63,7 +71,7 @@ export function SlotCard({ slot, collapsible = true }: { slot: Slot; collapsible
             <>
               <button
                 className="link danger"
-                onClick={() => ctx.act(() => call("DELETE", slotUrl(ctx.project.id, slot.name)), `${slot.name} moved to _trash`)}
+                onClick={() => ctx.undoable(() => call("DELETE", slotUrl(ctx.project.id, slot.name)), `Slot "${slot.name}" moved to _trash`, `Slot "${slot.name}" is back`)}
               >
                 Move to _trash
               </button>

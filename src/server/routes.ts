@@ -5,8 +5,11 @@ import {
   UserError,
   addResults,
   addVersion,
+  cloneSlot,
   createSlot,
   deleteResult,
+  restoreResult,
+  restoreSlot,
   segment,
   setApproval,
   setChangeRequest,
@@ -35,6 +38,21 @@ export interface App {
 type Params = Record<string, string>;
 type Handler = (req: Request, params: Params) => Response | Promise<Response>;
 type Wrap = (handler: (req: Request) => Response | Promise<Response>) => (req: Request) => Promise<Response>;
+
+/**
+ * Undo for a removal. The page keeps only its last one, until the next change; the server keeps the most
+ * recent few, in memory, so a restart ends them all.
+ */
+const undos = new Map<string, { project: string; run: () => void }>();
+const UNDO_KEEP = 20;
+
+function offerUndo(project: Project, run: () => void): string {
+  const token = crypto.randomUUID();
+  undos.set(token, { project: project.id, run });
+  // A Map keeps insertion order, so the first keys are the oldest.
+  for (const old of [...undos.keys()].slice(0, Math.max(0, undos.size - UNDO_KEEP))) undos.delete(old);
+  return token;
+}
 
 export const projectsOf = (app: App) => listProjects(app.projectsDir, app.config.externalProjects);
 
@@ -177,7 +195,27 @@ export function apiRoutes(app: App, wrap: Wrap) {
     "/api/projects/:id/slots/:slot": {
       DELETE: (_, p) => {
         const proj = project(p);
-        trashSlot(proj.path, slotOf(p));
+        const slot = slotOf(p);
+        const trashed = trashSlot(proj.path, slot);
+        return json({ ok: true, undo: offerUndo(proj, () => restoreSlot(proj.path, slot, trashed)) });
+      },
+    },
+
+    "/api/projects/:id/undo/:token": {
+      POST: (_, p) => {
+        const proj = project(p);
+        const entry = undos.get(p.token ?? "");
+        if (!entry || entry.project !== proj.id) throw new UserError("That can no longer be undone.");
+        undos.delete(p.token!);
+        entry.run();
+        return json({ ok: true });
+      },
+    },
+
+    "/api/projects/:id/slots/:slot/clone": {
+      POST: async (req, p) => {
+        const proj = project(p);
+        cloneSlot(proj.path, slotOf(p), slotName((await body(req)).name));
         return json({ ok: true });
       },
     },
@@ -196,7 +234,10 @@ export function apiRoutes(app: App, wrap: Wrap) {
       POST: async (req, p) => {
         const proj = project(p);
         const slot = slotOf(p);
-        return json({ version: addVersion(proj.path, slot, (await body(req)) as any) });
+        const n = addVersion(proj.path, slot, (await body(req)) as any);
+        // Only the human writes versions through the app; on a Done slot that is how they reopen it.
+        setApproval(proj.path, slot, null);
+        return json({ version: n });
       },
     },
 
@@ -220,9 +261,15 @@ export function apiRoutes(app: App, wrap: Wrap) {
         const proj = project(p);
         const slot = slotOf(p);
         const n = versionNumber(p.n ?? "");
-        deleteResult(proj.path, slot, n, segment(p.file, "File"));
+        const file = segment(p.file, "File");
+        const removed = deleteResult(proj.path, slot, n, file);
         refreshInfo(proj, presets, slot, n);
-        return json({ ok: true });
+        const undo = offerUndo(proj, () => {
+          restoreResult(proj.path, slot, n, file, removed);
+          // The frame sheets went with the file; a restored video gets them made again.
+          afterResults(proj, presets, slot, n, mediaKind(file) === "video" ? [join(proj.path, slot, `v${n}`, file)] : []);
+        });
+        return json({ ok: true, undo });
       },
     },
 
@@ -231,7 +278,8 @@ export function apiRoutes(app: App, wrap: Wrap) {
         const proj = project(p);
         const slot = slotOf(p);
         const n = versionNumber(p.n ?? "");
-        setSelected(proj.path, slot, n, segment((await body(req)).file, "File"));
+        const { file } = await body(req);
+        setSelected(proj.path, slot, n, file === null ? null : segment(file, "File"));
         return json({ ok: true });
       },
     },

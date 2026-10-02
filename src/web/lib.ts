@@ -1,5 +1,10 @@
 import type { Status } from "../shared/types";
 
+/** Fired after every request that changed something, so an older undo can no longer apply. */
+export const CHANGED_EVENT = "app-changed";
+/** Requests that change nothing in the slots: opening a folder, waking the agent, and an undo itself. */
+const NOT_A_CHANGE = /^\/api\/open$|\/notify$|\/undo\//;
+
 export async function call<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
   const isForm = body instanceof FormData;
   const res = await fetch(url, {
@@ -9,6 +14,7 @@ export async function call<T = unknown>(method: string, url: string, body?: unkn
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  if (method !== "GET" && !NOT_A_CHANGE.test(url)) window.dispatchEvent(new Event(CHANGED_EVENT));
   return data as T;
 }
 

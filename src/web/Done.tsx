@@ -2,7 +2,7 @@ import type { Result, Slot } from "../shared/types";
 import { type LightboxItem, useApp } from "./context";
 import { Icon } from "./icons";
 import { copyImage, copyText } from "./lib";
-import { CopyImageButton, CopyName, Media, describe } from "./shared";
+import { CopyImageButton, Media, describe } from "./shared";
 
 /** The approved result of a slot, as shown in the Done grid. */
 export function finalResult(slot: Slot): Result | null {
@@ -24,7 +24,7 @@ function VariantsBadge({ slot }: { slot: Slot }) {
 /** Every variant the agent made from the final asset, ready to copy. */
 export function VariantsList({ slot }: { slot: Slot }) {
   const ctx = useApp();
-  const items: LightboxItem[] = slot.variants.map((c) => ({ url: c.url, kind: c.kind, caption: `${slot.name} / ${c.file}` }));
+  const items: LightboxItem[] = slot.variants.map((c) => ({ url: c.url, kind: c.kind, title: slot.name, tags: ["Variant"], file: c.file }));
   return (
     <ul className="exports">
       {slot.variants.map((c, i) => (
@@ -60,21 +60,24 @@ export function VariantsList({ slot }: { slot: Slot }) {
 }
 
 export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () => void; onDetails: () => void }) {
+  const ctx = useApp();
   const final = finalResult(slot);
   return (
     <article className="tile">
-      <button className="tile-media" onClick={onOpen} aria-label={`View ${slot.name}`}>
+      <button className="tile-media" onClick={onOpen} aria-label={`View ${slot.name}, approved version ${slot.approved}`}>
         {final ? <Media item={final} /> : <span className="tile-missing">No file</span>}
         {final?.kind === "video" && <span className="tile-play" aria-hidden="true">▶</span>}
+        <span className="tile-version" title={`Approved version ${slot.approved}`}>
+          v{slot.approved}
+        </span>
       </button>
       {final?.kind === "image" && <CopyImageButton url={final.url} />}
       {slot.variants.length > 0 && <VariantsBadge slot={slot} />}
       <div className="tile-bar">
-        <span className="tile-name" title={slot.name}>
+        {/* The name is what people copy most, so clicking it copies it. */}
+        <button className="tile-name" title={`${slot.name}: click to copy`} onClick={() => ctx.act(() => copyText(slot.name), `Slot name "${slot.name}" copied to the clipboard`)}>
           {slot.name}
-        </span>
-        <CopyName name={slot.name} />
-        <span className="card-version">v{slot.approved}</span>
+        </button>
         <button className="btn btn-small tile-details" onClick={onDetails}>
           <Icon name="info" size={12} />
           Details

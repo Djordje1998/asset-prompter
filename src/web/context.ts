@@ -4,7 +4,15 @@ import type { ProjectSummary, Slot, Version } from "../shared/types";
 export interface LightboxItem {
   url: string;
   kind: "image" | "video";
-  caption: string;
+  /** What it is: the slot name, or for an input file its path. */
+  title: string;
+  version?: number;
+  /** Short labels such as Approved, Selected or Start frame. */
+  tags?: string[];
+  /** The file name, shown with its size and type. */
+  file?: string;
+  /** One of several results of a version: the viewer can select it. */
+  pickable?: boolean;
 }
 
 /** What every card needs from the app: the open project, and the ways to change it or open a dialog. */
@@ -13,9 +21,13 @@ export interface Ctx {
   /** Runs a change, reports the outcome in the toast and reloads the feed. */
   act: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
   toast: (message: string, isError?: boolean) => void;
+  /** Runs a removal that answers with an undo token, and offers Undo (and Ctrl+Z) in the toast for a few seconds. */
+  undoable: (fn: () => Promise<{ undo: string }>, done: string, undone: string) => Promise<void>;
   openLightbox: (items: LightboxItem[], index: number) => void;
   openPrompt: (slot: Slot, version: Version) => void;
   openNewVersion: (slot: Slot) => void;
+  /** Asks for a name and copies the whole slot under it. */
+  openClone: (slot: Slot) => void;
   /** Shows the files the agent derived from the slot's final asset. */
   openVariants: (slot: Slot) => void;
   /** The version a paste lands in: the one under the pointer. */

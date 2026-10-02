@@ -88,7 +88,7 @@ export function approvalLines(slots: Slot[]): string[] {
   return slots.map((s) => {
     const final = s.finalPath ? `${s.name}/${basename(s.finalPath)}` : `${s.name}/final.<ext>`;
     const variants = s.variants.length ? ` Your variants are in ${s.name}/exports/.` : "";
-    return `${s.name}: approved v${s.approved}. Use ${final}.${variants}`;
+    return `${s.name}: approved v${s.approved}, final. Use ${final}; write no review or version for it.${variants}`;
   });
 }
 

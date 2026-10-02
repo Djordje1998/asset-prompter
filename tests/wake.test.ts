@@ -99,7 +99,7 @@ test("approved slots the agent has not heard of are news, with the file to use",
   writeFileSync(join(root(), "logo", "exports", "logo-32.png"), "x");
   const fresh = newApprovals(slots(), { hero: 1 });
   expect(fresh.map((s) => s.name)).toEqual(["logo"]);
-  expect(approvalLines(fresh)).toEqual(["logo: approved v1. Use logo/final.png. Your variants are in logo/exports/."]);
+  expect(approvalLines(fresh)).toEqual(["logo: approved v1, final. Use logo/final.png; write no review or version for it. Your variants are in logo/exports/."]);
   // A different version approved since counts as news again.
   expect(newApprovals(slots(), { hero: 2, logo: 1 }).map((s) => s.name)).toEqual(["hero"]);
 });
@@ -107,7 +107,7 @@ test("approved slots the agent has not heard of are news, with the file to use",
 test("a briefing with only approvals says nothing needs changing", async () => {
   await approved("hero");
   const message = wakeMessage({ name: "demo", path: "/demo" }, slots(), {});
-  expect(message).toContain("Approved by the human since the last briefing:\n  hero: approved v1. Use hero/final.png.");
+  expect(message).toContain("Approved by the human since the last briefing:\n  hero: approved v1, final. Use hero/final.png;");
   expect(message).toContain("Nothing in the slots needs changing.");
   expect(message).not.toContain("Act on these slots only");
 });
@@ -122,7 +122,7 @@ test("Notify sends approvals once, then only what is new", async () => {
   const controller = new AbortController();
   const waiting = waitForNotify(project, slots(), controller.signal, () => {});
   expect(notifyAgent(project, slots())).toBe(true);
-  expect(await waiting).toContain("hero: approved v1.");
+  expect(await waiting).toContain("hero: approved v1, final.");
 
   // Told once: nothing left to send until something changes.
   expect(hasNews(root(), slots())).toBe(false);

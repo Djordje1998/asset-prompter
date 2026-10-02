@@ -81,6 +81,8 @@ export interface Version {
   warnings: string[];
   /** Results that do not match the version file: wrong length, aspect ratio or type. */
   resultWarnings: string[];
+  /** The same differences worded for the human in the app. */
+  resultNotes: string[];
   path: string;
   dir: string;
 }

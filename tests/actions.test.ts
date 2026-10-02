@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addResults, addVersion, createSlot, deleteResult, setApproval, setChangeRequest, setSelected, slotName, slugName, trashSlot } from "../src/server/actions";
-import { findSlot, image, png, tempProject, writeReview } from "./helpers";
+import { cloneName } from "../src/shared/names";
+import { scanProject } from "../src/server/store";
+import { addResults, addVersion, cloneSlot, createSlot, deleteResult, restoreResult, restoreSlot, setApproval, setChangeRequest, setSelected, slotName, slugName, trashSlot } from "../src/server/actions";
+import { findSlot, image, png, presets, tempProject, writeReview } from "./helpers";
 
 const root = tempProject();
 const hero = (...parts: string[]) => join(root(), "hero", ...parts);
@@ -10,7 +12,7 @@ const finals = () => readdirSync(hero()).filter((f) => f.startsWith("final."));
 
 // ---- approval and final.<ext> ------------------------------------------
 
-test("approving copies the chosen result to final.<ext>, and unapproving removes it", async () => {
+test("approving copies the chosen result to final.<ext>, and unapproving keeps it as the last approved", async () => {
   createSlot(root(), "hero", "", image);
   await addResults(root(), "hero", 1, [png("a.png", [7, 7, 7])]);
   setApproval(root(), "hero", 1);
@@ -20,7 +22,9 @@ test("approving copies the chosen result to final.<ext>, and unapproving removes
 
   setApproval(root(), "hero", null);
   expect(existsSync(hero("APPROVED"))).toBe(false);
-  expect(finals()).toEqual([]);
+  // Whatever uses final.png keeps working while the slot is reworked.
+  expect(finals()).toEqual(["final.png"]);
+  expect([...readFileSync(hero("final.png"))]).toEqual([7, 7, 7]);
 });
 
 test("changing the pick of the approved version replaces final.<ext>, extension included", async () => {
@@ -67,7 +71,7 @@ test("removing the result that was final drops the approval", async () => {
   deleteResult(root(), "hero", 1, "2.png");
   expect(existsSync(hero("v1", "selected.txt"))).toBe(false);
   expect(existsSync(hero("APPROVED"))).toBe(false);
-  expect(finals()).toEqual([]);
+  expect(finals()).toEqual(["final.png"]);
   expect(findSlot(root()).approved).toBeNull();
 });
 
@@ -77,7 +81,44 @@ test("removing the only result of the approved version drops the approval", asyn
   setApproval(root(), "hero", 1);
   deleteResult(root(), "hero", 1, "1.png");
   expect(existsSync(hero("APPROVED"))).toBe(false);
-  expect(finals()).toEqual([]);
+  expect(finals()).toEqual(["final.png"]);
+});
+
+test("the next approval replaces the final file kept from the last one", async () => {
+  createSlot(root(), "hero", "", image);
+  await addResults(root(), "hero", 1, [png("a.png", [1])]);
+  setApproval(root(), "hero", 1);
+  setApproval(root(), "hero", null);
+  addVersion(root(), "hero", { ...image, changes: "Brighter." });
+  await addResults(root(), "hero", 2, [new File([new Uint8Array([2])], "b.jpg", { type: "image/jpeg" })]);
+  setApproval(root(), "hero", 2);
+  expect(finals()).toEqual(["final.jpg"]);
+  expect([...readFileSync(hero("final.jpg"))]).toEqual([2]);
+});
+
+// ---- cloning -------------------------------------------------------------
+
+test("cloning copies the whole slot, timestamps included, and leaves the original alone", async () => {
+  createSlot(root(), "hero", "Banner.", image);
+  await addResults(root(), "hero", 1, [png()]);
+  writeReview(root(), "hero", 1, "approve", "", 60);
+  setApproval(root(), "hero", 1);
+  cloneSlot(root(), "hero", "hero-v2");
+  const copy = scanProject("p", root(), presets).find((s) => s.name === "hero-v2")!;
+  expect(copy.status).toBe("approved");
+  expect(copy.description).toBe("Banner.");
+  expect(existsSync(join(root(), "hero-v2", "final.png"))).toBe(true);
+  expect(statSync(join(root(), "hero-v2", "v1.review.md")).mtimeMs).toBe(statSync(hero("v1.review.md")).mtimeMs);
+  expect(() => cloneSlot(root(), "hero", "hero-v2")).toThrow('A slot named "hero-v2" already exists.');
+  expect(() => cloneSlot(root(), "nope", "nope-v2")).toThrow('Slot "nope" does not exist.');
+});
+
+test("a cloned slot is offered a name that counts up -vN and skips taken names", () => {
+  expect(cloneName("hero", [])).toBe("hero-v2");
+  expect(cloneName("hero-v2", [])).toBe("hero-v3");
+  expect(cloneName("hero", ["hero-v2", "hero-v3"])).toBe("hero-v4");
+  expect(cloneName("hero-v9", ["hero-v10"])).toBe("hero-v11");
+  expect(cloneName("v2", [])).toBe("v2-v2");
 });
 
 // ---- adding results ----------------------------------------------------
@@ -184,4 +225,56 @@ test("a removed result goes to _trash with its frame sheets deleted", async () =
   expect(existsSync(frames)).toBe(false);
   expect(readdirSync(join(root(), "_trash"))[0]).toEndWith("_hero_v1_1.mp4");
   expect(() => deleteResult(root(), "hero", 1, "1.mp4")).toThrow("1.mp4 does not exist in hero v1.");
+});
+
+// ---- undo ----------------------------------------------------------------
+
+test("undoing a removed result brings back the file, the human's pick and the approval", async () => {
+  createSlot(root(), "hero", "", image);
+  await addResults(root(), "hero", 1, [png("a.png", [1]), png("b.png", [2])]);
+  setSelected(root(), "hero", 1, "2.png");
+  setApproval(root(), "hero", 1);
+
+  const removed = deleteResult(root(), "hero", 1, "2.png");
+  expect(findSlot(root()).approved).toBeNull();
+  restoreResult(root(), "hero", 1, "2.png", removed);
+  expect([...readFileSync(hero("v1", "2.png"))]).toEqual([2]);
+  expect(readFileSync(hero("v1", "selected.txt"), "utf8")).toBe("2.png\n");
+  expect(findSlot(root()).status).toBe("approved");
+  expect([...readFileSync(hero("final.png"))]).toEqual([2]);
+  expect(() => restoreResult(root(), "hero", 1, "2.png", removed)).toThrow("2.png is no longer in _trash.");
+});
+
+test("undo refuses to overwrite a result added in the meantime", async () => {
+  createSlot(root(), "hero", "", image);
+  await addResults(root(), "hero", 1, [png()]);
+  const removed = deleteResult(root(), "hero", 1, "1.png");
+  await addResults(root(), "hero", 1, [png()]);
+  expect(() => restoreResult(root(), "hero", 1, "1.png", removed)).toThrow("A new 1.png was added to hero v1 since; remove it first.");
+});
+
+test("undoing a trashed slot puts the folder back", async () => {
+  createSlot(root(), "hero", "Banner.", image);
+  const trashed = trashSlot(root(), "hero");
+  expect(existsSync(hero())).toBe(false);
+  restoreSlot(root(), "hero", trashed);
+  expect(readFileSync(hero("slot.md"), "utf8")).toBe("Banner.\n");
+  createSlot(root(), "other", "", image);
+  const again = trashSlot(root(), "other");
+  createSlot(root(), "other", "", image);
+  expect(() => restoreSlot(root(), "other", again)).toThrow('A new slot named "other" was made since.');
+});
+
+test("the human's pick can be taken back, except on the approved version", async () => {
+  createSlot(root(), "hero", "", image);
+  await addResults(root(), "hero", 1, [png(), png()]);
+  setSelected(root(), "hero", 1, "2.png");
+  setSelected(root(), "hero", 1, null);
+  expect(existsSync(hero("v1", "selected.txt"))).toBe(false);
+  expect(findSlot(root()).versions[0]!.selected).toBeNull();
+
+  setSelected(root(), "hero", 1, "1.png");
+  setApproval(root(), "hero", 1);
+  expect(() => setSelected(root(), "hero", 1, null)).toThrow("v1 is approved with this pick. Remove the approval first.");
+  expect(readFileSync(hero("v1", "selected.txt"), "utf8")).toBe("1.png\n");
 });

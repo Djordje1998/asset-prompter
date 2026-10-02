@@ -64,18 +64,19 @@ export function CopyImageButton({ url }: { url: string }) {
 export function CopyName({ name }: { name: string }) {
   const ctx = useApp();
   return (
-    <button className="card-copy" onClick={() => ctx.act(() => copyText(name), `"${name}" copied`)} title="Copy slot name" aria-label="Copy slot name">
+    <button className="card-copy" onClick={() => ctx.act(() => copyText(name), `Slot name "${name}" copied to the clipboard`)} title="Copy slot name" aria-label="Copy slot name">
       <Icon name="copy" size={14} />
     </button>
   );
 }
 
 /** "1376×768 · PNG · 1.8 MB", the same everywhere a result or variant is shown. */
-export function describe(c: Result): string {
-  const parts: string[] = [];
+export function describe(c: Result, withName = false): string {
+  const parts: string[] = withName ? [c.file] : [];
   if (c.info?.width && c.info?.height) parts.push(`${c.info.width}×${c.info.height}`);
   if (c.kind === "video" && c.info?.duration) parts.push(`${c.info.duration.toFixed(1)}s`);
-  parts.push(c.file.split(".").pop()!.toUpperCase());
+  // A file name already says its type.
+  if (!withName) parts.push(c.file.split(".").pop()!.toUpperCase());
   if (c.bytes) parts.push(formatBytes(c.bytes));
   return parts.join(" · ");
 }

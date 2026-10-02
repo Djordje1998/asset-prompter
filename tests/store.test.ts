@@ -61,7 +61,7 @@ test("a slot moves through every status as files appear", async () => {
   expect(existsSync(join(root, "hero", "final.png"))).toBe(true);
 });
 
-test("a version written after approval reopens the slot and keeps the final file", async () => {
+test("a version written after approval leaves the slot Done; removing the approval reopens it and keeps the final file", async () => {
   createSlot(root, "hero", "", image);
   await addResults(root, "hero", 1, [png()]);
   setApproval(root, "hero", 1);
@@ -69,6 +69,8 @@ test("a version written after approval reopens the slot and keeps the final file
   utimesSync(join(root, "hero", "APPROVED"), past, past);
 
   addVersion(root, "hero", { ...image, changes: "Another try." });
+  expect(slot().status).toBe("approved");
+  setApproval(root, "hero", null);
   expect(slot().status).toBe("waiting_generation");
   expect(existsSync(join(root, "hero", "final.png"))).toBe(true);
 });
@@ -225,14 +227,14 @@ test("the agent's pick stands in until the human picks, and approving it makes i
 
 test("results are checked against the length, shape and type the prompt asked for", () => {
   const meta = { ...slot_meta(), type: "video", duration: "8s", aspect_ratio: "16:9" };
-  const warnings = resultChecks("v1.md", meta, [{ file: "1.mp4", kind: "video", info: { width: 1080, height: 1920, duration: 10.01, audio: true } }]);
+  const warnings = resultChecks("v1.md asks for", meta, [{ file: "1.mp4", kind: "video", info: { width: 1080, height: 1920, duration: 10.01, audio: true } }]);
   expect(warnings).toHaveLength(2);
   expect(warnings[0]).toContain("1.mp4 is 10.0s");
   expect(warnings[1]).toContain("1080x1920 (9:16)");
 
-  const fine = resultChecks("v1.md", meta, [{ file: "1.mp4", kind: "video", info: { width: 1280, height: 720, duration: 8.0, audio: false } }]);
+  const fine = resultChecks("v1.md asks for", meta, [{ file: "1.mp4", kind: "video", info: { width: 1280, height: 720, duration: 8.0, audio: false } }]);
   expect(fine).toEqual([]);
-  expect(resultChecks("v1.md", meta, [{ file: "1.png", kind: "image", info: null }])[0]).toContain("is an image");
+  expect(resultChecks("v1.md asks for", meta, [{ file: "1.png", kind: "image", info: null }])[0]).toContain("is an image");
 });
 
 test("the inputs a result was made from are recorded once, with whether they were approved", async () => {
