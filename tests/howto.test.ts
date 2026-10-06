@@ -10,6 +10,7 @@ const waitUrl = "http://localhost:4777/api/projects/demo/wait";
 const other: Preset = {
   tool: "other-tool",
   name: "Other Tool",
+  short: "Other",
   prompt_limit: 500,
   checked: "2026-10-06",
   logo: null,

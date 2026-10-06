@@ -1,6 +1,7 @@
 ---
 tool: dreamina
-name: Dreamina
+name: Dreamina
+short: Dreamina
 checked: 2026-10-06
 prompt_limit: null
 image:
@@ -24,8 +25,8 @@ video:
   aspect_ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
   modes:
     references:
-      roles: [reference, video, audio]
-      about: "Omni Reference: up to 30 images, 10 clips (2–30 s, 30 s in all) and 10 audio files, tagged with @ in the prompt; the prompt alone makes text-to-video"
+      roles: [reference, video, audio, start_frame, end_frame]
+      about: "Omni Reference: up to 30 images, 10 clips (2–30 s, 30 s in all) and 10 audio files, tagged with @ in the prompt; an image can be marked as the first or the last frame; the prompt alone makes text-to-video"
     frames:
       roles: [start_frame, end_frame]
       about: "First and Last Frames: a first frame, or a first and a last"

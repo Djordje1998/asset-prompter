@@ -21,3 +21,11 @@ bun test       # the test suite
 - Plain English in the interface and in the comments, in full sentences. The app explains itself; the comments explain why, not what.
 - One idea per function, no abstraction before the second use.
 - Folders and files are the only state. Do not add a database, a cache that outlives a restart, or a background job the folder cannot explain.
+
+## Releasing
+
+The version lives in `package.json` only; the app shows it in its footer and links it to the release on GitHub.
+
+1. Add a `## <version> (<date>)` section at the top of `CHANGELOG.md` with what changed, and commit it.
+2. Run `bun run release <version>`, for example `bun run release 0.2.0`. It checks the changelog has that section, writes the version into `package.json`, commits, tags `v<version>` and pushes the branch and the tag.
+3. The Release workflow publishes the GitHub release for the tag, with the changelog section as its notes. Nothing else to fill in.

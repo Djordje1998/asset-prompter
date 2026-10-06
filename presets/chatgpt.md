@@ -1,6 +1,7 @@
 ---
 tool: chatgpt
-name: ChatGPT Images
+name: ChatGPT Images
+short: ChatGPT
 checked: 2026-10-06
 prompt_limit: null
 image:

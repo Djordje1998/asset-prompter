@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NewVersionInput, Preset, ProjectSummary, Slot, TrashItem, Version } from "../shared/types";
 import { cloneName } from "../shared/names";
-import { useEscape } from "./hooks";
+import { useDismiss, useEscape } from "./hooks";
+import { LOCALE, lang, t } from "./i18n";
 import { Icon } from "./icons";
+import { KindIcon, RatioIcon } from "./shared";
 import { call, formatBytes, timeAgo } from "./lib";
 import type { LightboxItem } from "./context";
 
@@ -43,7 +45,7 @@ export function Modal({
       <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-label={label ?? (typeof title === "string" ? title : undefined)}>
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+          <button className="modal-close" onClick={onClose} aria-label={t("Close")} title={t("Close (Esc)")}>
             <Icon name="x" size={12} />
           </button>
         </header>
@@ -56,24 +58,24 @@ export function Modal({
 /** Confirms deleting a project: its folder goes to _trash, or, when added from elsewhere, it only leaves the list. */
 export function DeleteProjectDialog({ project, onDelete, onClose }: { project: ProjectSummary; onDelete: () => void; onClose: () => void }) {
   return (
-    <Modal title={<SlotTitle action={project.external ? "Remove" : "Delete"} slot={project.name} />} label={`Delete ${project.name}`} onClose={onClose}>
+    <Modal title={<SlotTitle action={project.external ? t("Remove") : t("Delete")} slot={project.name} />} label={t("Delete {name}", { name: project.name })} onClose={onClose}>
       <div className="form">
         {project.external ? (
           <p>
-            The project leaves this list. Its folder stays where it is, with every prompt and result: <code>{project.path}</code>
+            {t("The project leaves this list. Its folder stays where it is, with every prompt and result:")} <code>{project.path}</code>
           </p>
         ) : (
           <p>
-            The project folder, with every slot, prompt and result, moves to <code>projects/_trash</code>. Delete it there for good when you are sure.
+            {t("The project folder, with every slot, prompt and result, moves to")} <code>projects/_trash</code>. {t("Delete it there for good when you are sure.")}
           </p>
         )}
-        {project.listening > 0 && <p className="field-hint">The agent waiting on it is told to stop.</p>}
+        {project.listening > 0 && <p className="field-hint">{t("The agent waiting on it is told to stop.")}</p>}
         <footer className="modal-foot">
           <button className="btn btn-unapprove" onClick={onDelete} autoFocus>
             <Icon name="trash" size={12} />
-            {project.external ? "Remove from the list" : "Delete project"}
+            {project.external ? t("Remove from the list") : t("Delete project")}
           </button>
-          <span className="prompt-count">You can undo it right after.</span>
+          <span className="prompt-count">{t("You can undo it right after.")}</span>
         </footer>
       </div>
     </Modal>
@@ -109,7 +111,7 @@ export function TrashDialog({
     <Modal title={title} onClose={onClose} wide>
       <div className="form">
         {error && <p className="field-hint">{error}</p>}
-        {data && data.items.length === 0 && <p className="trash-empty">Nothing in _trash.</p>}
+        {data && data.items.length === 0 && <p className="trash-empty">{t("Nothing in _trash.")}</p>}
         {data && data.items.length > 0 && (
           <ul className="trash-list">
             {data.items.map((item) => (
@@ -128,14 +130,14 @@ export function TrashDialog({
                 <span className="trash-text">
                   <strong title={item.entry}>{item.name}</strong>
                   <span className="trash-meta">
-                    {item.kind === "result" ? `Result of ${item.slot} v${item.version}` : TRASH_KIND[item.kind]}
-                    {item.trashedAt !== null && ` · deleted ${timeAgo(item.trashedAt)}`}
+                    {item.kind === "result" ? t("Result of {slot} v{version}", { slot: item.slot ?? "", version: item.version ?? "" }) : t(TRASH_KIND[item.kind])}
+                    {item.trashedAt !== null && ` · ${t("deleted {when}", { when: timeAgo(item.trashedAt) })}`}
                   </span>
                 </span>
                 {item.kind !== "other" && (
                   <button className="btn btn-small" onClick={() => onRestore(item).then(load)}>
                     <Icon name="undo" size={12} />
-                    Restore
+                    {t("Restore")}
                   </button>
                 )}
               </li>
@@ -146,10 +148,10 @@ export function TrashDialog({
           {data && (
             <button className="link link-icon" onClick={() => onOpenFolder(data.path)}>
               <Icon name="folder" />
-              Open the _trash folder
+              {t("Open the _trash folder")}
             </button>
           )}
-          <span className="prompt-count">To delete for good, empty the folder by hand.</span>
+          <span className="prompt-count">{t("To delete for good, empty the folder by hand.")}</span>
         </footer>
       </div>
     </Modal>
@@ -158,13 +160,13 @@ export function TrashDialog({
 
 export function PromptDialog({ slot, version, onCopy, onClose }: { slot: Slot; version: Version; onCopy: () => void; onClose: () => void }) {
   return (
-    <Modal title={<SlotTitle action="Prompt" slot={slot.name} version={version.n} />} label={titleText("Prompt", slot.name, version.n)} onClose={onClose} wide>
+    <Modal title={<SlotTitle action={t("Prompt")} slot={slot.name} version={version.n} />} label={titleText(t("Prompt"), slot.name, version.n)} onClose={onClose} wide>
       <pre className="prompt-full">{version.prompt || version.raw}</pre>
       <footer className="modal-foot">
         <button className="btn btn-primary" onClick={onCopy}>
-          Copy prompt
+          {t("Copy prompt")}
         </button>
-        <span className="prompt-count">{version.prompt.length.toLocaleString()} characters</span>
+        <span className="prompt-count">{t("{n} characters", { n: version.prompt.length.toLocaleString(LOCALE[lang]) })}</span>
       </footer>
     </Modal>
   );
@@ -236,13 +238,13 @@ export function Lightbox({
     // A file name already says its type.
     item.file ? null : typeOf(item.url) || null,
     facts.bytes !== null ? formatBytes(facts.bytes) : null,
-    facts.seconds ? `${facts.seconds.toFixed(1)}s` : null,
+    facts.seconds ? t("{n}s", { n: facts.seconds.toFixed(1) }) : null,
   ].filter(Boolean);
   return (
     <div className={`overlay lightbox${strip ? " has-strip" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="lightbox-stage" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className={`lightbox-frame${picked ? ` is-picked is-${picked}` : ""}`}>
-          {picked && <span className="lightbox-picked">✓ {picked === "agent" ? "Agent's pick" : "Selected"}</span>}
+          {picked && <span className="lightbox-picked">✓ {picked === "agent" ? t("Agent's pick") : t("Selected")}</span>}
         {item.kind === "video" ? (
           <video
             key={item.url}
@@ -269,7 +271,7 @@ export function Lightbox({
         </div>
       </div>
       {strip && (
-        <div className="lightbox-strip" role="tablist" aria-label="All results">
+        <div className="lightbox-strip" role="tablist" aria-label={t("All results")}>
           {items.map((it, i) => {
             const state = pick?.of(it);
             return (
@@ -279,7 +281,7 @@ export function Lightbox({
                 aria-selected={i === index}
                 className={`lightbox-thumb${i === index ? " is-current" : ""}${state ? ` is-picked is-${state}` : ""}`}
                 onClick={() => setIndex(i)}
-                title={`${it.file ?? it.title}${state === "human" ? ", selected" : state === "agent" ? ", the agent's pick" : ""}${i === index ? ", showing now" : ""}`}
+                title={`${it.file ?? it.title}${state === "human" ? `, ${t("selected")}` : state === "agent" ? `, ${t("the agent's pick")}` : ""}${i === index ? `, ${t("showing now")}` : ""}`}
               >
                 <span className="lightbox-thumb-media">
                   {it.kind === "video" ? <video src={`${it.url}#t=0.1`} muted preload="metadata" /> : <img src={it.url} alt="" loading="lazy" />}
@@ -300,7 +302,7 @@ export function Lightbox({
             {item.version !== undefined && <span className="card-version">v{item.version}</span>}
             {item.tags?.map((tag) => (
               <span key={tag} className={`lightbox-tag${tag === "Approved" ? " is-approved" : ""}`}>
-                {tag}
+                {t(tag)}
               </span>
             ))}
           </div>
@@ -309,13 +311,13 @@ export function Lightbox({
         <div className="lightbox-nav">
           {items.length > 1 && (
             <>
-              <button className="btn lightbox-step" onClick={() => step(-1)} aria-label="Previous" title="Previous (Left arrow)">
+              <button className="btn lightbox-step" onClick={() => step(-1)} aria-label={t("Previous")} title={t("Previous (Left arrow)")}>
                 <Icon name="chevron" className="flip" />
               </button>
               <span className="lightbox-count">
                 {index + 1} / {items.length}
               </span>
-              <button className="btn lightbox-step" onClick={() => step(1)} aria-label="Next" title="Next (Right arrow)">
+              <button className="btn lightbox-step" onClick={() => step(1)} aria-label={t("Next")} title={t("Next (Right arrow)")}>
                 <Icon name="chevron" />
               </button>
             </>
@@ -326,21 +328,21 @@ export function Lightbox({
             <button
               className={`btn ${picked === "human" ? "btn-approve" : ""}`}
               onClick={() => pick.toggle(item)}
-              title={picked === "human" ? "Your pick. Click to take it back." : picked === "agent" ? "The agent's pick. Click to make it yours." : "Select this result"}
+              title={picked === "human" ? t("Your pick. Click to take it back.") : picked === "agent" ? t("The agent's pick. Click to make it yours.") : t("Select this result")}
             >
               <Icon name="check" />
-              {picked === "human" ? "Selected" : "Select"}
+              {picked === "human" ? t("Selected") : t("Select")}
             </button>
           )}
           {onCopyImage && item.kind === "image" && (
             <button className="btn btn-primary" onClick={() => onCopyImage(item.url)}>
               <Icon name="copyimage" />
-              Copy image
+              {t("Copy image")}
             </button>
           )}
-          <button className="btn lightbox-close" onClick={onClose} title="Close (Esc)">
+          <button className="btn lightbox-close" onClick={onClose} title={t("Close (Esc)")}>
             <Icon name="x" size={12} />
-            Close
+            {t("Close")}
           </button>
         </div>
       </footer>
@@ -358,11 +360,60 @@ function Field({ label, children, hint }: { label: string; children: React.React
   );
 }
 
+/** The tool of a version: a menu of the installed presets with their logos, since a native select cannot show a picture. */
+function ToolPicker({ value, presets, onChange }: { value: string; presets: Preset[]; onChange: (tool: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, open, () => setOpen(false));
+  const current = presets.find((p) => p.tool === value);
+  const choose = (tool: string) => {
+    onChange(tool);
+    setOpen(false);
+  };
+  const logo = (p: Preset) =>
+    p.logo && (
+      <span className="tool-logo">
+        <img src={p.logo} alt="" width={16} height={16} />
+      </span>
+    );
+  return (
+    <div className="picker" ref={ref}>
+      <button type="button" className="picker-button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}>
+        {current ? (
+          <span className="tool-mark">
+            {logo(current)}
+            {current.name}
+          </span>
+        ) : (
+          <span className="picker-empty">{value || t("Not set")}</span>
+        )}
+        <Icon name="caret" size={10} className={`picker-caret${open ? " is-open" : ""}`} />
+      </button>
+      {open && (
+        <div className="menu picker-menu" role="listbox" aria-label={t("Tool")}>
+          <button type="button" role="option" aria-selected={!value} className={`menu-item${value ? "" : " is-current"}`} onClick={() => choose("")}>
+            <span className="menu-mark">{!value && <Icon name="check" size={12} />}</span>
+            <span className="menu-name picker-empty">{t("Not set")}</span>
+          </button>
+          {presets.map((p) => (
+            <button key={p.tool} type="button" role="option" aria-selected={p.tool === value} className={`menu-item${p.tool === value ? " is-current" : ""}`} onClick={() => choose(p.tool)}>
+              <span className="menu-mark">{p.tool === value && <Icon name="check" size={12} />}</span>
+              {logo(p)}
+              <span className="menu-name">{p.name}</span>
+              <span className="picker-id">{p.tool}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Choice({ value, options, onChange }: { value: string; options: string[] | undefined; onChange: (v: string) => void }) {
   if (!options || options.length === 0) return <input value={value} onChange={(e) => onChange(e.target.value)} />;
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Not set</option>
+      <option value="">{t("Not set")}</option>
       {!options.includes(value) && value && <option value={value}>{value}</option>}
       {options.map((o) => (
         <option key={o} value={o}>
@@ -373,6 +424,62 @@ function Choice({ value, options, onChange }: { value: string; options: string[]
   );
 }
 
+/** A row of pills to pick one value; clicking the chosen one again clears it. */
+function Chips({ value, options, onChange, icon, titles }: { value: string; options: string[]; onChange: (v: string) => void; icon?: (option: string) => React.ReactNode; titles?: Record<string, string | undefined> }) {
+  return (
+    <div className="chips" role="radiogroup">
+      {options.map((o) => (
+        <button key={o} type="button" role="radio" aria-checked={o === value} className={`chip${o === value ? " is-on" : ""}`} title={titles?.[o]} onClick={() => onChange(o === value ? "" : o)}>
+          {icon?.(o)}
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The seconds a list of durations spans: fixed values and ranges alike; null when it names none. */
+function span(durations: string[]): [number, number] | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const d of durations) {
+    const m = /^(\d+)(?:-(\d+))?s$/.exec(d);
+    if (!m) continue;
+    min = Math.min(min, Number(m[1]));
+    max = Math.max(max, Number(m[2] ?? m[1]));
+  }
+  return min === Infinity ? null : [min, max];
+}
+
+/**
+ * Seconds. Pills when the chosen model offers fixed lengths only; otherwise a slider: over the model's range, or,
+ * with no model chosen yet, over everything the tool's models offer, or 1–30 s when the preset says nothing.
+ */
+function LengthField({ durations, all, value, onChange }: { durations: string[] | undefined; all: string[]; value: string; onChange: (v: string) => void }) {
+  const fixed = durations?.filter((d) => /^\d+s$/.test(d)) ?? [];
+  const onlyFixed = durations !== undefined && durations.length > 0 && fixed.length === durations.length;
+  const seconds = /^(\d+)s?$/.exec(value)?.[1];
+  if (!onlyFixed) {
+    const [min, max] = (durations && span(durations)) ?? span(all) ?? [1, 30];
+    // One possible length (Midjourney: 5 s) is a pill, not a slider with nowhere to go.
+    if (min === max) return <Chips value={value} options={[`${min}s`]} onChange={onChange} />;
+    const n = seconds ? Math.min(max, Math.max(min, Number(seconds))) : null;
+    return (
+      <div className="slider">
+        <input type="range" min={min} max={max} step={1} value={n ?? min} onChange={(e) => onChange(`${e.target.value}s`)} aria-label={t("Length")} />
+        <output className={`slider-value${n === null ? " is-empty" : ""}`}>{n === null ? t("Not set") : `${n}s`}</output>
+        {n !== null && (
+          <button type="button" className="link" onClick={() => onChange("")}>
+            {t("Clear")}
+          </button>
+        )}
+        <span className="field-hint">{t("Any length from {min} to {max} seconds", { min, max })}</span>
+      </div>
+    );
+  }
+  return <Chips value={value} options={fixed} onChange={onChange} />;
+}
+
 function VersionFields({ value, onChange, presets, showChanges }: { value: NewVersionInput; onChange: (v: NewVersionInput) => void; presets: Preset[]; showChanges: boolean }) {
   const set = (patch: Partial<NewVersionInput>) => onChange({ ...value, ...patch });
   const preset = presets.find((p) => p.tool === value.tool);
@@ -381,48 +488,70 @@ function VersionFields({ value, onChange, presets, showChanges }: { value: NewVe
   const isVideo = value.type === "video";
   // The modes the tool has for this type, narrowed to the model's own once a model is chosen.
   const modes = section?.modes ? (model?.modes ?? Object.keys(section.modes)) : isVideo && !preset ? ["frames", "references"] : undefined;
+  const modeAbout = Object.fromEntries(Object.entries(section?.modes ?? {}).map(([k, m]) => [k, m.about]));
+  const ratios = model?.aspect_ratios ?? section?.aspect_ratios;
+  const resetSettings = { model: "", mode: "", duration: "", resolution: "", aspect_ratio: "" };
   return (
     <>
       <div className="field-row">
-        <Field label="Tool">
-          <Choice value={value.tool ?? ""} options={presets.map((p) => p.tool)} onChange={(tool) => set({ tool, model: "", mode: "", duration: "", resolution: "", aspect_ratio: "" })} />
-        </Field>
-        <Field label="Type">
-          <select value={value.type} onChange={(e) => set({ type: e.target.value, model: "", mode: "", duration: "", resolution: "", aspect_ratio: "" })}>
-            <option value="image">Image</option>
-            <option value="video">Video</option>
-          </select>
-        </Field>
-        <Field label="Model">
-          <Choice value={value.model} options={section?.models.map((m) => m.name)} onChange={(v) => set({ model: v })} />
-        </Field>
+        <div className="field">
+          <span className="field-label">{t("Tool")}</span>
+          <ToolPicker value={value.tool ?? ""} presets={presets} onChange={(tool) => set({ tool, ...resetSettings })} />
+        </div>
+        <div className="field field-fixed">
+          <span className="field-label">{t("Type")}</span>
+          <div className="segmented segmented-kind" role="radiogroup">
+            {(["image", "video"] as const).map((kind) => (
+              <button key={kind} type="button" role="radio" aria-checked={value.type === kind} className={value.type === kind ? `is-on is-${kind}` : ""} onClick={() => value.type !== kind && set({ type: kind, ...resetSettings })}>
+                <KindIcon kind={kind} />
+                {kind === "image" ? t("Image") : t("Video")}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div className="field-row">
+      <div className="gen-panel">
+        <div className="field-row">
+          <Field label={t("Model")} hint={model?.about}>
+            <Choice value={value.model} options={section?.models.map((m) => m.name)} onChange={(v) => set({ model: v, mode: "", duration: "", resolution: "" })} />
+          </Field>
+          {model?.resolutions && (
+            <div className="field">
+              <span className="field-label">{t("Resolution")}</span>
+              <Chips value={value.resolution ?? ""} options={model.resolutions} onChange={(resolution) => set({ resolution })} />
+            </div>
+          )}
+        </div>
         {modes && (
-          <Field label="Mode">
-            <Choice value={value.mode ?? ""} options={modes} onChange={(mode) => set({ mode })} />
-          </Field>
+          <div className="field">
+            <span className="field-label">{t("Mode")}</span>
+            <Chips value={value.mode ?? ""} options={modes} onChange={(mode) => set({ mode })} titles={modeAbout} />
+            {value.mode && modeAbout[value.mode] && <span className="field-hint">{modeAbout[value.mode]}</span>}
+          </div>
         )}
-        <Field label="Aspect ratio">
-          <Choice value={value.aspect_ratio ?? ""} options={model?.aspect_ratios ?? section?.aspect_ratios} onChange={(aspect_ratio) => set({ aspect_ratio })} />
-        </Field>
-        {isVideo && (
-          <Field label="Length">
-            <Choice value={value.duration ?? ""} options={model?.durations?.filter((d) => !d.includes("-"))} onChange={(duration) => set({ duration })} />
-          </Field>
-        )}
-        {model?.resolutions && (
-          <Field label="Resolution">
-            <Choice value={value.resolution ?? ""} options={model.resolutions} onChange={(resolution) => set({ resolution })} />
-          </Field>
-        )}
+        <div className="field-row">
+          <div className="field">
+            <span className="field-label">{t("Aspect ratio")}</span>
+            {ratios && ratios.length ? (
+              <Chips value={value.aspect_ratio ?? ""} options={ratios} onChange={(aspect_ratio) => set({ aspect_ratio })} icon={(r) => <RatioIcon ratio={r} />} />
+            ) : (
+              <input value={value.aspect_ratio ?? ""} onChange={(e) => set({ aspect_ratio: e.target.value })} placeholder="16:9" />
+            )}
+          </div>
+          {isVideo && (
+            <div className="field">
+              <span className="field-label">{t("Length")}</span>
+              <LengthField durations={model?.durations} all={section?.models.flatMap((m) => m.durations ?? []) ?? []} value={value.duration ?? ""} onChange={(duration) => set({ duration })} />
+            </div>
+          )}
+        </div>
       </div>
       {showChanges && (
-        <Field label="What changed">
-          <input value={value.changes ?? ""} onChange={(e) => set({ changes: e.target.value })} placeholder="One sentence on what this version changes and why" />
+        <Field label={t("What changed")}>
+          <input value={value.changes ?? ""} onChange={(e) => set({ changes: e.target.value })} placeholder={t("One sentence on what this version changes and why")} />
         </Field>
       )}
-      <Field label="Prompt">
+      <Field label={t("Prompt")}>
         <textarea rows={8} value={value.prompt} onChange={(e) => set({ prompt: e.target.value })} />
       </Field>
     </>
@@ -447,7 +576,7 @@ export function NewSlotDialog({
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState(() => blank(presets, defaultTool));
   return (
-    <Modal title="New slot" onClose={onClose} wide>
+    <Modal title={t("New slot")} onClose={onClose} wide>
       <form
         className="form"
         onSubmit={(e) => {
@@ -455,16 +584,16 @@ export function NewSlotDialog({
           onCreate(name, description, version);
         }}
       >
-        <Field label="Slot name" hint="This becomes the folder name, for example hero-banner.">
+        <Field label={t("Slot name")} hint={t("This becomes the folder name, for example hero-banner.")}>
           <input autoFocus required value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))} />
         </Field>
-        <Field label="What is this asset for">
+        <Field label={t("What is this asset for")}>
           <input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
         <VersionFields value={version} onChange={setVersion} presets={presets} showChanges={false} />
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
-            Create slot
+            {t("Create slot")}
           </button>
         </footer>
       </form>
@@ -491,7 +620,7 @@ export function NewVersionDialog({ slot, presets, onCreate, onClose }: { slot: S
   );
   const next = (latest?.n ?? 0) + 1;
   return (
-    <Modal title={<SlotTitle action="New version" slot={slot.name} version={next} />} label={titleText("New version", slot.name, next)} onClose={onClose} wide>
+    <Modal title={<SlotTitle action={t("New version")} slot={slot.name} version={next} />} label={titleText(t("New version"), slot.name, next)} onClose={onClose} wide>
       <form
         className="form"
         onSubmit={(e) => {
@@ -500,10 +629,16 @@ export function NewVersionDialog({ slot, presets, onCreate, onClose }: { slot: S
         }}
       >
         <VersionFields value={version} onChange={setVersion} presets={presets} showChanges={latest !== undefined} />
-        {latest && latest.inputs.length > 0 && <p className="field-hint">The {latest.inputs.length} input files of v{latest.n} are carried over.</p>}
+        {latest && latest.inputs.length > 0 && (
+          <p className="field-hint">
+            {latest.inputs.length === 1
+              ? t("The input file of v{version} is carried over.", { version: latest.n })
+              : t("The {n} input files of v{version} are carried over.", { n: latest.inputs.length, version: latest.n })}
+          </p>
+        )}
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
-            Save v{next}
+            {t("Save v{n}", { n: next })}
           </button>
         </footer>
       </form>
@@ -528,7 +663,7 @@ export function CloneDialog({
 }) {
   const [name, setName] = useState(() => cloneName(slot.name, taken));
   return (
-    <Modal title={<SlotTitle action="Clone" slot={slot.name} />} label={titleText("Clone", slot.name)} onClose={onClose}>
+    <Modal title={<SlotTitle action={t("Clone")} slot={slot.name} />} label={titleText(t("Clone"), slot.name)} onClose={onClose}>
       <form
         className="form"
         onSubmit={(e) => {
@@ -536,21 +671,21 @@ export function CloneDialog({
           onClone(name, false);
         }}
       >
-        <Field label="Name of the copy" hint="The whole slot is copied: prompts, results, reviews and approval. The original stays as it is.">
+        <Field label={t("Name of the copy")} hint={t("The whole slot is copied: prompts, results, reviews and approval. The original stays as it is.")}>
           <input autoFocus required value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))} onFocus={(e) => e.target.select()} />
         </Field>
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
-            Clone
+            {t("Clone")}
           </button>
           {slot.approved !== null && (
             <button
               className="btn"
               type="button"
               onClick={(e) => e.currentTarget.form?.reportValidity() && onClone(name, true)}
-              title="The copy is not approved, so you can ask for changes on it right away"
+              title={t("The copy is not approved, so you can ask for changes on it right away")}
             >
-              Clone and remove approval
+              {t("Clone and remove approval")}
             </button>
           )}
         </footer>
@@ -563,7 +698,7 @@ export function NewProjectDialog({ projectsDir, onCreate, onClose }: { projectsD
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [value, setValue] = useState("");
   return (
-    <Modal title="Add a project" onClose={onClose}>
+    <Modal title={t("Add a project")} onClose={onClose}>
       <form
         className="form"
         onSubmit={(e) => {
@@ -573,24 +708,24 @@ export function NewProjectDialog({ projectsDir, onCreate, onClose }: { projectsD
       >
         <div className="segmented">
           <button type="button" className={mode === "new" ? "is-on" : ""} onClick={() => setMode("new")}>
-            New project
+            {t("New project")}
           </button>
           <button type="button" className={mode === "existing" ? "is-on" : ""} onClick={() => setMode("existing")}>
-            Existing folder
+            {t("Existing folder")}
           </button>
         </div>
         {mode === "new" ? (
-          <Field label="Project name" hint={`Created as a folder in ${projectsDir}`}>
+          <Field label={t("Project name")} hint={t("Created as a folder in {dir}", { dir: projectsDir })}>
             <input autoFocus required value={value} onChange={(e) => setValue(e.target.value.toLowerCase().replace(/\s+/g, "-"))} />
           </Field>
         ) : (
-          <Field label="Full path of the folder" hint="Use this for a folder inside a repo your agent works in. Slots are created directly in it.">
+          <Field label={t("Full path of the folder")} hint={t("Use this for a folder inside a repo your agent works in. Slots are created directly in it.")}>
             <input autoFocus required value={value} onChange={(e) => setValue(e.target.value)} placeholder="/home/you/repo/assets" />
           </Field>
         )}
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
-            {mode === "new" ? "Create project" : "Add folder"}
+            {mode === "new" ? t("Create project") : t("Add folder")}
           </button>
         </footer>
       </form>

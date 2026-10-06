@@ -50,9 +50,15 @@
   box-sizing: border-box;
 }
 
+/* The ground: the page colour with a quiet grid of dots, as on the landing page, still and the same everywhere;
+   cards, bars and dialogs sit on their own surfaces above it. */
 body {
   margin: 0;
-  background: var(--page);
+  background-color: var(--page);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 9%, transparent) 1px, transparent 1.6px);
+  background-size: 20px 20px;
+  background-position: 10px 10px;
+  background-attachment: fixed;
   color: var(--text);
   font: 15px/1.5 var(--body);
   -webkit-font-smoothing: antialiased;
@@ -2850,14 +2856,22 @@ main.blank {
   bottom: 80px;
 }
 
-/* Laptops with display scaling and half-screen windows: the top bar drops labels before it would spill. */
-@media (max-width: 1160px) {
-  .narrow-hide {
+/* Laptops (1366 and 1280 wide, or a scaled display) and half-screen windows: the top bar drops labels in
+   order, before it would spill. Serbian labels are longer than English, so the steps are set for them.
+   First the Tutorial and Sound labels go (icons stay), then the folder label and the project path. */
+@media (max-width: 1440px) {
+  .toggle .narrow-hide {
     display: none;
   }
 
   .toggle {
     padding: 0 10px;
+  }
+}
+
+@media (max-width: 1320px) {
+  .narrow-hide {
+    display: none;
   }
 }
 
@@ -3060,17 +3074,6 @@ video.is-loading {
 /* The button that opens it shares the look of the sound switch, without the lamp. */
 .toggle-plain::before {
   display: none;
-}
-
-/* Its label goes first when the top bar gets tight, well before the other labels do. */
-@media (max-width: 1280px) {
-  .toggle-plain .narrow-hide {
-    display: none;
-  }
-
-  .toggle-plain {
-    padding: 0 10px;
-  }
 }
 
 .tour-overlay {
@@ -3875,4 +3878,892 @@ video.is-loading {
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* ==== polish: the finish the landing page has, as numbered blocks so any one can be taken out alone ==== */
+
+:root {
+  /* the lit inner edge of a surface, and the grain over the ground */
+  --hi: rgb(255 255 255 / 0.07);
+  --hi-strong: rgb(255 255 255 / 0.12);
+  --shadow-soft: 0 12px 28px -16px rgb(0 0 0 / 0.7);
+  --grain-faint: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .6 0 0 0 -.22'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .6 0 0 0 -.22'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.1'/%3E%3C/svg%3E");
+}
+
+/* 1. A lit inner edge along the top of every raised surface, and a soft shadow under the hard one. */
+.card,
+.tile,
+.modal,
+.menu,
+.toast {
+  box-shadow: inset 0 1px 0 var(--hi), var(--shadow), var(--shadow-soft);
+}
+
+.tile {
+  box-shadow: inset 0 1px 0 var(--hi), var(--shadow-small), var(--shadow-soft);
+}
+
+.modal {
+  box-shadow: inset 0 1px 0 var(--hi-strong), 6px 6px 0 var(--ink), 0 24px 48px -24px rgb(0 0 0 / 0.8);
+}
+
+.btn,
+.split,
+.toggle {
+  box-shadow: inset 0 1px 0 var(--hi), var(--shadow-small);
+}
+
+.filter {
+  box-shadow: inset 0 1px 0 var(--hi);
+}
+
+.btn:active {
+  box-shadow: inset 0 1px 0 var(--hi);
+}
+
+/* 2. The generator's logo: a small plate with a lit edge and its own shadow, like the cubes in the hero. */
+.tool-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border-color: #d8d6dc;
+  box-shadow: inset 0 1px 0 #fff, 1px 1px 0 var(--ink);
+}
+
+.tool-logo img {
+  width: 15px;
+  height: 15px;
+}
+
+/* 3. Grain over the ground: the dots and the page colour stay, the surface stops being flat. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--grain);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* 4. Cards rise into place once, when the project opens; a change of state later moves nothing. */
+@media (prefers-reduced-motion: no-preference) {
+  /* On the card, not its wrapper: the wrapper carries the exit transition, which an animation would override. */
+  .feed > .card-wrap > .card {
+    animation: card-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .feed > .card-wrap:nth-child(2) > .card {
+    animation-delay: 50ms;
+  }
+  .feed > .card-wrap:nth-child(3) > .card {
+    animation-delay: 100ms;
+  }
+  .feed > .card-wrap:nth-child(4) > .card {
+    animation-delay: 150ms;
+  }
+  .feed > .card-wrap:nth-child(5) > .card {
+    animation-delay: 200ms;
+  }
+  .feed > .card-wrap:nth-child(n + 6) > .card {
+    animation-delay: 240ms;
+  }
+}
+
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* 5. One band of light crosses a primary button under the pointer, once; a copied button fades to green. */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%);
+  transform: translateX(-130%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .btn-primary:hover::after {
+    animation: btn-sweep 0.7s ease-out 1 forwards;
+  }
+}
+
+@keyframes btn-sweep {
+  to {
+    transform: translateX(130%);
+  }
+}
+
+.btn-copied {
+  transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+}
+
+/* 6. A status tag carries a faint halo of its own colour; the agent lamp stays the only thing that pulses. */
+.status-tag {
+  box-shadow: 0 0 12px -5px var(--tone);
+}
+
+/* 7. Who speaks, underlined in their colour, in the tutorial's loop. */
+.tour-node-who {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--tone, var(--muted)) 60%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* 8. An empty state is a hole torn in the dotted page. Three layers: the ground a little way below (plain,
+   the page colour), the torn edge of the page itself (a thin lighter band, the paper's side), and the dotted page on
+   top with the jagged opening, whose shadow falls through the hole onto the ground. The dots on the top layer
+   are fixed to the viewport, as on the body, so they meet the body's at the edge without a seam. */
+.blank-center {
+  position: relative;
+  isolation: isolate;
+  /* Air between the filters and the tear. */
+  margin-top: 28px;
+  padding: 84px 0;
+  /* The page colour exactly: the pictures carry it as their own ground, so they melt into it. */
+  background: var(--page);
+  /* Keeps the top layer's shadow inside: outside the hole, the page is the body itself. */
+  clip-path: inset(0);
+}
+
+.blank-center::before,
+.blank-center::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* The torn edge: the same opening, a touch smaller, in a lighter tone, so a thin band of it shows under the top layer. */
+.blank-center::before {
+  z-index: -2;
+  background: #3a3641;
+  clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, calc(50% + 305px) 50.0%, calc(50% + 298px) 54.5%, calc(50% + 288px) 58.9%, calc(50% + 302px) 64.3%, calc(50% + 286px) 68.8%, calc(50% + 281px) 74.2%, calc(50% + 245px) 77.1%, calc(50% + 209px) 79.6%, calc(50% + 173px) 81.3%, calc(50% + 149px) 85.5%, calc(50% + 105px) 84.8%, calc(50% + 74px) 87.7%, calc(50% + 36px) 86.7%, calc(50% + -0px) 87.1%, calc(50% + -33px) 83.7%, calc(50% + -67px) 83.7%, calc(50% + -95px) 81.4%, calc(50% + -147px) 85.1%, calc(50% + -180px) 82.5%, calc(50% + -225px) 81.7%, calc(50% + -250px) 77.7%, calc(50% + -272px) 73.5%, calc(50% + -284px) 68.6%, calc(50% + -304px) 64.4%, calc(50% + -306px) 59.4%, calc(50% + -321px) 54.9%, calc(50% + -318px) 50.0%, calc(50% + -318px) 45.2%, calc(50% + -296px) 40.9%, calc(50% + -296px) 35.9%, calc(50% + -278px) 31.8%, calc(50% + -264px) 27.3%, calc(50% + -240px) 23.4%, calc(50% + -221px) 18.8%, calc(50% + -185px) 16.6%, calc(50% + -152px) 13.9%, calc(50% + -107px) 14.7%, calc(50% + -69px) 14.8%, calc(50% + -33px) 15.9%, calc(50% + -0px) 14.6%, calc(50% + 34px) 15.2%, calc(50% + 72px) 13.4%, calc(50% + 107px) 14.8%, calc(50% + 142px) 16.3%, calc(50% + 175px) 18.3%, calc(50% + 206px) 21.0%, calc(50% + 238px) 23.7%, calc(50% + 276px) 26.2%, calc(50% + 298px) 30.5%, calc(50% + 313px) 35.2%, calc(50% + 324px) 40.0%, calc(50% + 313px) 45.3%, calc(50% + 305px) 50.0%);
+}
+
+.blank-center::after {
+  z-index: -1;
+  background-color: var(--page);
+  /* The grain too, so the texture inside and outside the torn layer is the same. */
+  background-image: var(--grain-faint), radial-gradient(circle, color-mix(in srgb, var(--text) 9%, transparent) 1px, transparent 1.6px);
+  background-size: 180px 180px, 20px 20px;
+  background-position: 0 0, 10px 10px;
+  background-attachment: fixed, fixed;
+  clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, calc(50% + 313px) 50.0%, calc(50% + 305px) 54.6%, calc(50% + 295px) 59.1%, calc(50% + 310px) 64.7%, calc(50% + 293px) 69.2%, calc(50% + 288px) 74.9%, calc(50% + 251px) 77.8%, calc(50% + 215px) 80.3%, calc(50% + 177px) 82.1%, calc(50% + 153px) 86.4%, calc(50% + 108px) 85.7%, calc(50% + 76px) 88.7%, calc(50% + 37px) 87.6%, calc(50% + -0px) 88.0%, calc(50% + -34px) 84.6%, calc(50% + -68px) 84.6%, calc(50% + -98px) 82.2%, calc(50% + -151px) 86.0%, calc(50% + -184px) 83.4%, calc(50% + -231px) 82.5%, calc(50% + -257px) 78.4%, calc(50% + -279px) 74.1%, calc(50% + -291px) 69.1%, calc(50% + -312px) 64.8%, calc(50% + -313px) 59.7%, calc(50% + -330px) 55.0%, calc(50% + -326px) 50.0%, calc(50% + -326px) 45.0%, calc(50% + -304px) 40.6%, calc(50% + -304px) 35.6%, calc(50% + -285px) 31.3%, calc(50% + -270px) 26.7%, calc(50% + -246px) 22.7%, calc(50% + -227px) 18.0%, calc(50% + -189px) 15.7%, calc(50% + -156px) 13.0%, calc(50% + -110px) 13.8%, calc(50% + -71px) 13.9%, calc(50% + -34px) 15.0%, calc(50% + -0px) 13.7%, calc(50% + 35px) 14.3%, calc(50% + 74px) 12.5%, calc(50% + 109px) 13.9%, calc(50% + 145px) 15.4%, calc(50% + 179px) 17.5%, calc(50% + 211px) 20.3%, calc(50% + 244px) 23.0%, calc(50% + 283px) 25.6%, calc(50% + 305px) 30.0%, calc(50% + 321px) 34.8%, calc(50% + 332px) 39.8%, calc(50% + 321px) 45.1%, calc(50% + 313px) 50.0%);
+  /* The page is a little way above the ground: a close, dark shadow under its edge, and a softer one further in. */
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 0.75)) drop-shadow(0 10px 10px rgb(0 0 0 / 0.55));
+}
+
+.empty-art {
+  position: relative;
+  z-index: 1;
+}
+
+/* On a phone the hole would be wider than the page: plain ground there. */
+@media (max-width: 600px) {
+  .blank-center::before,
+  .blank-center::after {
+    display: none;
+  }
+}
+
+.lightbox {
+  background: radial-gradient(ellipse 70% 80% at 50% 45%, rgb(28 26 32 / 0.96), rgb(10 9 12 / 0.96));
+}
+
+/* 9. Selection, scrollbars and the focus ring in the app's own colours. */
+::selection {
+  background: color-mix(in srgb, var(--primary) 75%, transparent);
+  color: var(--on-primary);
+}
+
+:focus-visible {
+  outline-color: var(--primary);
+}
+
+* {
+  scrollbar-color: var(--edge-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--edge-strong);
+  border: 2px solid var(--page);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 10. A card under the pointer: a brighter edge and a shadow one step deeper, with nothing moving. */
+@media (hover: hover) {
+  .card {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card:hover {
+    border-color: #58545f;
+    box-shadow: inset 0 1px 0 var(--hi-strong), 5px 5px 0 var(--ink), var(--shadow-soft);
+  }
+}
+
+/* 11. A card that leaves the list (filtered out, moved to Done, deleted) folds up and slides away before the
+   others close the gap, so a change is seen as that card going, never as another one taking its place. */
+.card-wrap {
+  display: grid;
+  /* The column is the feed's width, never the content's: a long one-line text must not widen the card. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr;
+}
+
+.card-wrap > .card {
+  min-width: 0;
+  min-height: 0;
+}
+
+.tile-wrap {
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card-wrap {
+    transition:
+      grid-template-rows 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.3s ease,
+      transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+      margin-bottom 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-wrap.is-leaving {
+    grid-template-rows: 0fr;
+    margin-bottom: -24px;
+    opacity: 0;
+    transform: translateX(32px) scale(0.98);
+    pointer-events: none;
+  }
+
+  .card-wrap.is-leaving > .card {
+    overflow: hidden;
+  }
+
+  .tile-wrap {
+    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .tile-wrap.is-leaving {
+    opacity: 0;
+    transform: scale(0.92);
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-wrap.is-leaving,
+  .tile-wrap.is-leaving {
+    display: none;
+  }
+}
+
+/* 12. A card or an older version opens and closes like a drawer: the height eases, the content fades with it. */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.fold.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.fold-inner {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Settled and open: unclipped, so a popover or a tooltip inside can reach past the edge. */
+.fold.is-settled .fold-inner {
+  overflow: visible;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fold {
+    transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  }
+
+  .fold.is-open {
+    transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease 0.05s;
+  }
+}
+
+/* 13. The tool picker in the version form: a select that shows the generator's logo, and a menu with every preset. */
+.picker {
+  position: relative;
+}
+
+.picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  background: var(--well);
+  border: var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+}
+
+.picker-button:hover {
+  border-color: var(--edge-strong);
+}
+
+.picker-button .tool-mark {
+  font-weight: 500;
+}
+
+.picker-empty {
+  color: var(--muted);
+}
+
+.picker-caret {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.picker-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.picker-menu {
+  z-index: 3;
+  /* Wider than the field when the field is narrow, so a name and its id sit on one line. */
+  min-width: max(100%, 320px);
+  top: calc(100% + 6px);
+}
+
+.picker-menu .menu-name,
+.picker-button .tool-mark {
+  white-space: nowrap;
+}
+
+.picker-menu .menu-item {
+  padding: 6px 10px;
+}
+
+.picker-id {
+  margin-left: auto;
+  color: var(--faint);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 14. The footer: the app's name and version, the links that belong to it, and the one promise it makes. */
+/* The page is at least the window's height and the feed takes the spare room, so the footer stays at the bottom
+   even when the feed is short, instead of climbing up under the cards. */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Flex items with auto margins shrink to their content; the bars and the feed must keep their full width. */
+#root > header,
+#root > nav,
+#root > main,
+#root > footer,
+#root > .filters {
+  width: 100%;
+}
+
+#root > main {
+  flex: 1 0 auto;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 18px 20px 28px;
+  border-top: var(--line);
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+.foot-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.foot-version {
+  color: var(--faint);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.foot-version:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+}
+
+.foot-links a,
+.foot-link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: none;
+}
+
+.foot-links a:hover,
+.foot-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.foot-note {
+  margin-left: auto;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .foot-note {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+/* 15. The language menu in the top bar. */
+.lang {
+  position: relative;
+}
+
+.lang-code {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.lang-menu {
+  left: auto;
+  right: 0;
+  min-width: 170px;
+}
+
+.lang-menu .menu-item {
+  padding: 6px 10px;
+}
+
+/* 16. The version form: a panel for the generator's settings, pills for the choices, a slider for a length range. */
+.gen-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  background: var(--well);
+  border: var(--line);
+  border-radius: var(--radius);
+}
+
+.gen-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.gen-panel .field input,
+.gen-panel .field select,
+.gen-panel .picker-button {
+  background: var(--card);
+}
+
+.field-fixed {
+  flex: 0 0 auto;
+}
+
+.segmented-kind button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+}
+
+.segmented-kind button.is-image {
+  color: var(--image);
+}
+
+.segmented-kind button.is-video {
+  color: var(--video);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: 99px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: inset 0 1px 0 var(--hi);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.chip:hover {
+  border-color: #58545f;
+  color: var(--text);
+}
+
+.chip.is-on {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.chip .ratio-icon {
+  opacity: 0.8;
+}
+
+.slider {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 38px;
+}
+
+.slider .field-hint {
+  grid-column: 1 / -1;
+}
+
+.slider input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.slider-value {
+  min-width: 44px;
+  padding: 3px 8px;
+  background: var(--card);
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-value.is-empty {
+  color: var(--faint);
+  font-weight: 500;
+}
+
+.unit-input {
+  position: relative;
+  max-width: 140px;
+}
+
+.unit-input input {
+  width: 100%;
+  padding-right: 28px;
+}
+
+.unit-input .unit {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--faint);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* 17. A collapsed card keeps its brief and a larger thumbnail in one quiet row under the head. */
+.card.is-collapsed.has-summary .card-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--tone) 18%, var(--edge));
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+}
+
+.card-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: 0;
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-summary:hover {
+  background: var(--card-hover);
+  color: var(--text);
+}
+
+.card-summary p {
+  margin: 0;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.45;
+}
+
+.card-summary-thumb {
+  flex: none;
+  width: 96px;
+  height: 60px;
+  object-fit: cover;
+  border: var(--line);
+  border-radius: 4px;
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.feed.is-compact .card-summary {
+  padding: 6px 10px;
+  gap: 10px;
+}
+
+.feed.is-compact .card-summary-thumb {
+  width: 64px;
+  height: 40px;
+}
+
+/* 18. The first load: the bars and the feed as ghosts, in the page's own shape, until the state arrives. */
+.skeleton-control {
+  display: inline-block;
+  width: 120px;
+  height: 32px;
+  border-radius: var(--radius);
+}
+
+.skeleton-control.is-wide {
+  width: 220px;
+}
+
+.skeleton-control.is-small {
+  width: 72px;
+}
+
+.skeleton-bar .brand {
+  opacity: 0.6;
+}
+
+.tabs .skeleton-control {
+  height: 36px;
+  margin-bottom: -1px;
+}
+
+/* 19. Inputs in two groups: the frames of the clip in a strip, start to end on a track, and the references apart.
+   The same tiles as everywhere, on the well, so nothing new has to be learnt; only the track says "this is a clip". */
+.input-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.input-group-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.clip {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0;
+  padding: 8px 10px;
+  background: var(--well);
+  border: var(--line);
+  border-radius: var(--radius);
+}
+
+/* The frame tiles are the same size as the reference tiles, so the strip and the grid balance. */
+.clip > .input {
+  gap: 8px;
+  padding: 5px 8px 5px 5px;
+  background: var(--card);
+}
+
+.clip > .input .input-thumb {
+  width: 40px;
+  height: 40px;
+}
+
+.clip > .input .input-body {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.clip > .input .input-source {
+  max-width: 160px;
+}
+
+.clip > .input .input-actions {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.clip > .input .input-actions .link {
+  padding: 0;
+  font-size: 12px;
+}
+
+/* The track between the frames: the clip itself, drawn as a dotted line with a dot at each end. */
+.clip-track {
+  position: relative;
+  flex: 1 1 36px;
+  min-width: 36px;
+  height: 2px;
+  margin: 0 6px;
+  background-image: radial-gradient(circle, var(--edge-strong) 1px, transparent 1.5px);
+  background-size: 6px 2px;
+  background-repeat: repeat-x;
+}
+
+.clip-track::before,
+.clip-track::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--edge-strong);
+  transform: translateY(-50%);
+}
+
+.clip-track::before {
+  left: -3px;
+}
+
+.clip-track::after {
+  right: -3px;
+}
+
+/* No end frame: the track leaves the last tile and fades out. */
+.clip-track.is-open {
+  flex: 0 0 56px;
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent);
+  mask-image: linear-gradient(90deg, #000, transparent);
+}
+
+.clip-track.is-open::after {
+  display: none;
+}
+
+/* References: small tiles in a grid, three or more to a row in the card's column; the file name is the label,
+   since the group's title already says what they are. A role that is not "reference" (video, audio) stays. */
+.inputs.is-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.inputs.is-compact .input {
+  gap: 8px;
+  padding: 5px 8px 5px 5px;
+}
+
+.inputs.is-compact .input-thumb {
+  width: 40px;
+  height: 40px;
+}
+
+.inputs.is-compact .input-body {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.inputs.is-compact .input.is-reference .input-role {
+  display: none;
+}
+
+.inputs.is-compact .input-source {
+  max-width: none;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.inputs.is-compact .input-actions {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.inputs.is-compact .input-actions .link {
+  padding: 0;
+  font-size: 12px;
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun src/server/index.ts",
     "dev": "bun --hot src/server/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "release": "bun scripts/release.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

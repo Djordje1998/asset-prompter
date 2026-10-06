@@ -151,6 +151,8 @@ export interface PresetSection {
 export interface Preset {
   tool: string;
   name: string;
+  /** The name on a card, where the full one is too long: "Luma" for Luma Dream Machine. */
+  short: string;
   prompt_limit: number | null;
   /** The date the settings were last checked against the tool, as written in the preset file. */
   checked: string | null;
@@ -182,6 +184,8 @@ export interface AppState {
   projectsDir: string;
   /** Projects in projects/_trash. */
   trashedProjects: number;
+  /** The app's version, from package.json. */
+  version: string;
 }
 
 export interface NewVersionInput {

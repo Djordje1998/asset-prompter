@@ -72,6 +72,7 @@ export function loadPresets(dir: string): Preset[] {
     presets.push({
       tool,
       name: typeof d.name === "string" ? d.name : tool,
+      short: typeof d.short === "string" ? d.short : typeof d.name === "string" ? d.name : tool,
       prompt_limit: typeof d.prompt_limit === "number" ? d.prompt_limit : null,
       checked,
       logo: logoFile ? `/api/presets/${encodeURIComponent(tool)}/logo` : null,

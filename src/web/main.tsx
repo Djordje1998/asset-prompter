@@ -11,8 +11,11 @@ import progressArt from "./art/empty-in-progress.png";
 import { copiedKey, markPromptCopied } from "./copied";
 import { AppContext, type Ctx, type LightboxItem } from "./context";
 import { DetailDialog, DoneTile, VariantsList, finalResult } from "./Done";
-import { readStored, writeStored } from "./hooks";
+import { readStored, useLeaving, writeStored } from "./hooks";
+import { t } from "./i18n";
+import "./sr";
 import { Icon, Logo } from "./icons";
+import { LanguageMenu } from "./Language";
 import { CHANGED_EVENT, STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
 import { ProjectMenu } from "./ProjectMenu";
 import { STATUS_ICON } from "./shared";
@@ -58,7 +61,7 @@ function EmptyArt({ done = false, filter = "all" }: { done?: boolean; filter?: F
 function LoadingSlots({ tab, perRow }: { tab: Tab; perRow: number }) {
   if (tab === "done") {
     return (
-      <div className="done-grid" style={{ "--per-row": perRow } as React.CSSProperties} aria-busy="true" aria-label="Loading">
+      <div className="done-grid" style={{ "--per-row": perRow } as React.CSSProperties} aria-busy="true" aria-label={t("Loading")}>
         {Array.from({ length: perRow }, (_, i) => (
           <div key={i} className="tile skeleton-tile">
             <div className="tile-media skeleton" />
@@ -73,7 +76,7 @@ function LoadingSlots({ tab, perRow }: { tab: Tab; perRow: number }) {
   return (
     <>
       {[0, 1].map((i) => (
-        <div key={i} className="card skeleton-card" aria-busy="true" aria-label="Loading">
+        <div key={i} className="card skeleton-card" aria-busy="true" aria-label={t("Loading")}>
           <div className="card-head">
             <span className="skeleton skeleton-line" />
           </div>
@@ -236,7 +239,10 @@ function App() {
       if (!currentId || files.length === 0) return;
       const form = new FormData();
       for (const file of files) form.append("files", file);
-      act(() => call("POST", `${versionUrl(currentId, slot, n)}/results`, form), `${files.length === 1 ? "Result" : `${files.length} results`} added to ${slot} v${n}`);
+      act(
+        () => call("POST", `${versionUrl(currentId, slot, n)}/results`, form),
+        files.length === 1 ? t("Result added to {slot} v{n}", { slot, n }) : t("{count} results added to {slot} v{n}", { count: files.length, slot, n }),
+      );
     },
     [act, currentId],
   );
@@ -246,7 +252,7 @@ function App() {
       const files = [...(e.clipboardData?.files ?? [])];
       const target = pasteTarget.current;
       if (files.length === 0 || (e.target as HTMLElement).closest?.("input, textarea")) return;
-      if (!target) return showToast("Point at the slot the pasted file belongs to, then paste again.", true);
+      if (!target) return showToast(t("Point at the slot the pasted file belongs to, then paste again."), true);
       e.preventDefault();
       upload(target.slot, target.n, files);
     };
@@ -296,8 +302,6 @@ function App() {
     document.title = openCount > 0 ? `(${openCount}) Asset Prompter` : "Asset Prompter";
   }, [openCount]);
 
-  if (!state) return <main className="blank">{loadError ? `Cannot reach the app server: ${loadError}` : "Loading"}</main>;
-
   // Oldest first, so the work reads top to bottom in the order it was asked for, with slots that wait for
   // another slot last; Done keeps the newest first.
   const inProgress = (slots ?? [])
@@ -305,6 +309,38 @@ function App() {
     .sort((a, b) => Number(a.status === "waiting_input") - Number(b.status === "waiting_input") || a.number - b.number);
   const done = (slots ?? []).filter((s) => s.status === "approved");
   const visible = inProgress.filter((s) => filter === "all" || s.status === filter);
+  // A card that leaves the list stays for its exit animation, so a change is seen as a card going, not swapping.
+  const shownCards = useLeaving(visible, (s) => s.name, `${currentId}:${tab}`);
+  const shownTiles = useLeaving(done, (s) => s.name, `${currentId}:${tab}`);
+
+  if (!state) {
+    if (loadError) return <main className="blank">{t("Cannot reach the app server: {error}", { error: loadError })}</main>;
+    // The page's own shape while the first state loads: the bars as ghosts and two ghost cards, no words.
+    return (
+      <>
+        <header className="topbar skeleton-bar" aria-hidden="true">
+          <div className="brand">
+            <Logo size={24} />
+            <span className="brand-name">Asset Prompter</span>
+          </div>
+          <span className="skeleton skeleton-control is-wide" />
+          <span className="skeleton skeleton-control" />
+          <div className="topbar-right">
+            <span className="skeleton skeleton-control is-small" />
+            <span className="skeleton skeleton-control is-small" />
+          </div>
+        </header>
+        <nav className="tabs" aria-hidden="true">
+          <span className="skeleton skeleton-control" />
+          <span className="skeleton skeleton-control is-small" />
+        </nav>
+        <main className="feed" data-width={width}>
+          <LoadingSlots tab="progress" perRow={perRow} />
+        </main>
+      </>
+    );
+  }
+
   const count = (f: Filter) => (f === "all" ? inProgress.length : inProgress.filter((s) => s.status === f).length);
   /** What Notify agent would send: slots where it is the agent's turn, plus approvals it has not heard of. */
   const news = count("waiting_agent") + newApprovals;
@@ -336,17 +372,17 @@ function App() {
         {project && (
           <>
             <div className="split">
-              <button className="btn split-main" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
+              <button className="btn split-main" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
                 <Icon name="robot" />
-                Copy agent instructions
+                {t("Copy agent instructions")}
               </button>
-              <button className="btn split-side" onClick={() => setDialog({ kind: "instructions" })} title="Show what gets copied">
-                View
+              <button className="btn split-side" onClick={() => setDialog({ kind: "instructions" })} title={t("Show what gets copied")}>
+                {t("View")}
               </button>
             </div>
-            <button className="link link-icon" onClick={() => act(() => call("POST", "/api/open", { path: project.path }))} title="Open the project folder">
+            <button className="link link-icon" onClick={() => act(() => call("POST", "/api/open", { path: project.path }))} title={t("Open the project folder")}>
               <Icon name="folder" />
-              <span className="narrow-hide">Open folder</span>
+              <span className="narrow-hide">{t("Open folder")}</span>
             </button>
             <span className="folder-path narrow-hide">
               <bdi>{project.path}</bdi>
@@ -354,15 +390,16 @@ function App() {
           </>
         )}
         <div className="topbar-right">
-          <button className="toggle toggle-plain" onClick={() => setTouring(true)} title="How Asset Prompter works, step by step" aria-haspopup="dialog">
+          <LanguageMenu />
+          <button className="toggle toggle-plain" onClick={() => setTouring(true)} title={t("How Asset Prompter works, step by step")} aria-haspopup="dialog">
             <Icon name="help" />
-            <span className="narrow-hide">Tutorial</span>
+            <span className="narrow-hide">{t("Tutorial")}</span>
           </button>
           <button
             className={`toggle${sound ? " is-on" : ""}`}
             role="switch"
             aria-checked={sound}
-            title={sound ? "Sound on" : "Sound off"}
+            title={sound ? t("Sound on") : t("Sound off")}
             onClick={() => {
               writeStored("sound", sound ? "off" : "on");
               setSound(!sound);
@@ -370,32 +407,32 @@ function App() {
             }}
           >
             <Icon name={sound ? "speaker" : "mute"} />
-            <span className="narrow-hide">Sound {sound ? "on" : "off"}</span>
+            <span className="narrow-hide">{sound ? t("Sound on") : t("Sound off")}</span>
           </button>
           {project && (
-            <button className="btn btn-primary" onClick={() => setDialog({ kind: "slot" })}>
+            <button className="btn btn-primary" onClick={() => setDialog({ kind: "slot" })} title={t("New slot")}>
               <Icon name="plus" />
-              New slot
+              <span className="narrow-hide">{t("New slot")}</span>
             </button>
           )}
         </div>
       </header>
 
       {project && (
-        <nav className="tabs" aria-label="Views">
+        <nav className="tabs" aria-label={t("Views")}>
           <button className={`tab${tab === "progress" ? " is-on" : ""}`} onClick={() => chooseTab("progress")}>
             <Icon name="hourglass" />
-            In progress <span className={`filter-count${inProgress.length > 0 ? " is-hot" : ""}`}>{inProgress.length}</span>
+            {t("In progress")} <span className={`filter-count${inProgress.length > 0 ? " is-hot" : ""}`}>{inProgress.length}</span>
           </button>
           <button className={`tab${tab === "done" ? " is-on" : ""}`} onClick={() => chooseTab("done")}>
             <Icon name="star" />
-            Done <span className="filter-count">{done.length}</span>
+            {t("Done")} <span className="filter-count">{done.length}</span>
           </button>
           <div className="tabs-tools">
             {trashCount > 0 && (
-              <button className="view-button" onClick={() => setDialog({ kind: "projectTrash" })} title="Deleted slots and results of this project">
+              <button className="view-button" onClick={() => setDialog({ kind: "projectTrash" })} title={t("Deleted slots and results of this project")}>
                 <Icon name="trash" />
-                Trash <span className="filter-count">{trashCount}</span>
+                {t("Trash")} <span className="filter-count">{trashCount}</span>
               </button>
             )}
             <ViewSettings tab={tab} view={view} />
@@ -404,11 +441,11 @@ function App() {
       )}
 
       {project && tab === "progress" && (
-        <nav className="filters" aria-label="Filter slots">
+        <nav className="filters" aria-label={t("Filter slots")}>
           {FILTERS.map((f) => (
             <button key={f} className={`filter filter-${f}${filter === f ? " is-on" : ""}`} onClick={() => setFilter(f)}>
               {f === "all" ? <Icon name="grid" size={12} /> : <Icon name={STATUS_ICON[f]} size={12} />}
-              {f === "all" ? "All" : STATUS_LABEL[f]}
+              {f === "all" ? t("All") : t(STATUS_LABEL[f])}
               <span className="filter-count">{count(f)}</span>
             </button>
           ))}
@@ -420,37 +457,39 @@ function App() {
               onClick={() =>
                 act(async () => {
                   const r = await call<{ delivered: boolean }>("POST", `/api/projects/${enc(project.id)}/notify`);
-                  showToast(r.delivered ? "Agent notified" : "The agent is not waiting right now. It gets this as soon as it starts waiting, or tell it \"done\" in the chat.", !r.delivered);
+                  showToast(r.delivered ? t("Agent notified") : t("The agent is not waiting right now. It gets this as soon as it starts waiting, or tell it \"done\" in the chat."), !r.delivered);
                 })
               }
               title={[
                 listening
-                  ? "The agent is waiting. Press to send it every slot where it is its turn, and what you approved since the last time."
-                  : "The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md.",
+                  ? t("The agent is waiting. Press to send it every slot where it is its turn, and what you approved since the last time.")
+                  : t("The agent is not waiting right now. It starts waiting after its turn, once it has read the new HOW-TO-USE.md."),
                 // The count on the button adds two things up; say which.
                 news > 0
-                  ? `To send: ${[
-                      count("waiting_agent") > 0 && `${count("waiting_agent")} for the agent to work on`,
-                      newApprovals > 0 && `${newApprovals} ${newApprovals === 1 ? "approval" : "approvals"} to report`,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}.`
+                  ? t("To send: {items}.", {
+                      items: [
+                        count("waiting_agent") > 0 && t("{n} for the agent to work on", { n: count("waiting_agent") }),
+                        newApprovals > 0 && (newApprovals === 1 ? t("{n} approval to report", { n: newApprovals }) : t("{n} approvals to report", { n: newApprovals })),
+                      ]
+                        .filter(Boolean)
+                        .join(", "),
+                    })
                   : "",
               ]
                 .filter(Boolean)
                 .join("\n")}
             >
               <Icon name="robot" />
-              Notify agent
+              {t("Notify agent")}
               {news > 0 && <span className="filter-count">{news}</span>}
             </button>
             {listening > 0 && (
               <button
                 className="btn split-side"
-                onClick={() => act(() => call("POST", `/api/projects/${enc(project.id)}/stop`), "The agent stopped listening")}
-                title="Tell the waiting agent to stop listening. It starts again when you ask it in the chat."
+                onClick={() => act(() => call("POST", `/api/projects/${enc(project.id)}/stop`), t("The agent stopped listening"))}
+                title={t("Tell the waiting agent to stop listening. It starts again when you ask it in the chat.")}
               >
-                Stop
+                {t("Stop")}
               </button>
             )}
           </div>
@@ -462,11 +501,11 @@ function App() {
                   for (const s of (slots ?? []).filter((s) => s.status === "waiting_review")) {
                     await call("PUT", `${slotUrl(project.id, s.name)}/approval`, { version: s.versions.at(-1)!.n });
                   }
-                }, `${count("waiting_review")} slots approved`)
+                }, t("{n} slots approved", { n: count("waiting_review") }))
               }
-              title="Approve every slot the agent approved"
+              title={t("Approve every slot the agent approved")}
             >
-              Approve all {count("waiting_review")}
+              {t("Approve all {n}", { n: count("waiting_review") })}
             </button>
           )}
           </div>
@@ -477,70 +516,105 @@ function App() {
         {!project && (
           <div className="blank">
             <EmptyArt />
-            <h1>Start with a project</h1>
-            <p>A project is a folder. Your agent writes prompts into it, and you drop the generated images and videos back in.</p>
+            <h1>{t("Start with a project")}</h1>
+            <p>{t("A project is a folder. Your agent writes prompts into it, and you drop the generated images and videos back in.")}</p>
             <button className="btn btn-primary" onClick={() => setDialog({ kind: "project" })}>
-              Add a project
+              {t("Add a project")}
             </button>
           </div>
         )}
         {project && slots && slots.length === 0 && (
           <div className="blank">
             <EmptyArt />
-            <h1>No slots in {project.name} yet</h1>
+            <h1>{t("No slots in {name} yet", { name: project.name })}</h1>
             <p>
-              Paste the agent instructions into your agent's chat and it will start writing prompts here. You can also write the first one
-              yourself.
+              {t("Paste the agent instructions into your agent's chat and it will start writing prompts here. You can also write the first one yourself.")}
             </p>
-            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
-              Copy agent instructions
+            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
+              {t("Copy agent instructions")}
             </button>
             <button className="btn" onClick={() => setDialog({ kind: "slot" })}>
-              New slot
+              {t("New slot")}
             </button>
           </div>
         )}
         {tab === "progress" && project && slots && slots.length > 0 && visible.length === 0 && (
           <div className="blank blank-center">
             <EmptyArt filter={filter} />
-            <p>{filter === "all" ? "Nothing in progress. Approved assets are in Done." : `Nothing here: no slot is "${STATUS_LABEL[filter as Status]}".`}</p>
+            <p>{filter === "all" ? t("Nothing in progress. Approved assets are in Done.") : t("Nothing here: no slot is \"{status}\".", { status: t(STATUS_LABEL[filter as Status]) })}</p>
           </div>
         )}
         {project && !slots && <LoadingSlots tab={tab} perRow={perRow} />}
-        {tab === "progress" && ctx && visible.map((slot) => <SlotCard key={slot.name} slot={slot} />)}
+        {tab === "progress" &&
+          ctx &&
+          shownCards.map(({ key, item, leaving }) => (
+            <div key={key} className={`card-wrap${leaving ? " is-leaving" : ""}`} aria-hidden={leaving || undefined}>
+              <SlotCard slot={item} />
+            </div>
+          ))}
         {tab === "done" && project && slots && slots.length > 0 && done.length === 0 && (
           <div className="blank blank-center">
             <EmptyArt done />
-            <p>Nothing approved yet. Approved assets show up here.</p>
+            <p>{t("Nothing approved yet. Approved assets show up here.")}</p>
           </div>
         )}
         {tab === "done" && ctx && done.length > 0 && (
           <div className={`done-grid${compact ? " is-compact" : ""}`} style={{ "--per-row": perRow } as React.CSSProperties}>
-            {done.map((slot) => (
-              <DoneTile
-                key={slot.name}
-                slot={slot}
-                onOpen={() => {
-                  const i = doneItems.findIndex((item) => item.title === slot.name);
-                  if (i >= 0) setDialog({ kind: "lightbox", items: doneItems, index: i });
-                }}
-                onDetails={() => setDetail(slot.name)}
-              />
+            {shownTiles.map(({ key, item: slot, leaving }) => (
+              <div key={key} className={`tile-wrap${leaving ? " is-leaving" : ""}`} aria-hidden={leaving || undefined}>
+                <DoneTile
+                  slot={slot}
+                  onOpen={() => {
+                    const i = doneItems.findIndex((item) => item.title === slot.name);
+                    if (i >= 0) setDialog({ kind: "lightbox", items: doneItems, index: i });
+                  }}
+                  onDetails={() => setDetail(slot.name)}
+                />
+              </div>
             ))}
           </div>
         )}
         {!state.ffmpeg && project && (
-          <p className="footnote">ffmpeg is not installed, so videos get no frame sheets and an agent cannot review them.</p>
+          <p className="footnote">{t("ffmpeg is not installed, so videos get no frame sheets and an agent cannot review them.")}</p>
         )}
       </main>
+      <footer className="foot">
+        <span className="foot-brand">
+          <Logo size={16} />
+          Asset Prompter{" "}
+          <a className="foot-version" href={`https://github.com/Djordje1998/asset-prompter/releases/tag/v${state.version}`} target="_blank" rel="noopener" title={t("This version's release notes")}>
+            v{state.version}
+          </a>
+        </span>
+        <nav className="foot-links" aria-label={t("About Asset Prompter")}>
+          <a href="https://assetprompter.com" target="_blank" rel="noopener">
+            {t("Website")}
+          </a>
+          <a href="https://github.com/Djordje1998/asset-prompter" target="_blank" rel="noopener">
+            GitHub
+          </a>
+          <a href="https://github.com/Djordje1998/asset-prompter/issues/new/choose" target="_blank" rel="noopener">
+            {t("Report a problem")}
+          </a>
+          <button className="foot-link" onClick={() => setTouring(true)}>
+            {t("Tutorial")}
+          </button>
+        </nav>
+        <span className="foot-note">{t("Runs on this machine only. Nothing leaves it but what you paste into your generator.")}</span>
+      </footer>
 
       {detailSlot && ctx && (
         <DetailDialog slots={done} slot={detailSlot} onShow={setDetail} onClose={() => setDetail(null)} paused={dialog !== null || variantsSlot !== undefined} />
       )}
       {variantsSlot && ctx && (
         <Modal
-          title={<SlotTitle action={`${variantsSlot.variants.length} ${variantsSlot.variants.length === 1 ? "variant" : "variants"} of`} slot={variantsSlot.name} />}
-          label={`Variants of ${variantsSlot.name}`}
+          title={
+            <SlotTitle
+              action={variantsSlot.variants.length === 1 ? t("{n} variant of", { n: variantsSlot.variants.length }) : t("{n} variants of", { n: variantsSlot.variants.length })}
+              slot={variantsSlot.name}
+            />
+          }
+          label={t("Variants of {name}", { name: variantsSlot.name })}
           onClose={() => setVariantsOf(null)}
           wide
         >
@@ -548,14 +622,14 @@ function App() {
         </Modal>
       )}
       {dialog?.kind === "instructions" && project && (
-        <Modal title="Agent instructions" onClose={close} wide>
+        <Modal title={t("Agent instructions")} onClose={close} wide>
           <pre className="prompt-full">{onboardingMessage(project.path)}</pre>
           <footer className="modal-foot">
-            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), "Instructions for the agent copied")}>
+            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
               <Icon name="copy" />
-              Copy
+              {t("Copy")}
             </button>
-            <span className="prompt-count">Paste it into a new chat with your agent.</span>
+            <span className="prompt-count">{t("Paste it into a new chat with your agent.")}</span>
           </footer>
         </Modal>
       )}
@@ -564,7 +638,7 @@ function App() {
           items={dialog.items}
           start={dialog.index}
           onClose={close}
-          onCopyImage={(url) => act(() => copyImage(url), "Image copied")}
+          onCopyImage={(url) => act(() => copyImage(url), t("Image copied"))}
           pick={{
             of: (item) => {
               if (!item.pickable) return undefined;
@@ -587,7 +661,7 @@ function App() {
             act(async () => {
               await copyText(dialog.version.prompt);
               if (project) markPromptCopied(copiedKey(project.id, dialog.slot.name, dialog.version.n), dialog.version.prompt);
-            }, "Prompt copied")
+            }, t("Prompt copied"))
           } />
       )}
       {dialog?.kind === "deleteProject" && (
@@ -605,16 +679,16 @@ function App() {
                 act(async () => {
                   await call("POST", `/api/undo/${enc(undo)}`);
                   chooseProject(gone.id);
-                }, `${gone.name} is back`);
+                }, t("{name} is back", { name: gone.name }));
               lastUndo.current = run;
-              showToast(gone.external ? `${gone.name} removed from the list` : `${gone.name} moved to projects/_trash`, false, run);
+              showToast(gone.external ? t("{name} removed from the list", { name: gone.name }) : t("{name} moved to projects/_trash", { name: gone.name }), false, run);
             });
           }}
         />
       )}
       {dialog?.kind === "trash" && (
         <TrashDialog
-          title="Deleted projects"
+          title={t("Deleted projects")}
           url="/api/trash"
           onClose={close}
           onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
@@ -622,20 +696,20 @@ function App() {
             act(async () => {
               const { id } = await call<{ id: string }>("POST", "/api/trash/restore", { entry: item.entry });
               chooseProject(id);
-            }, `${item.name} is back`)
+            }, t("{name} is back", { name: item.name }))
           }
         />
       )}
       {dialog?.kind === "projectTrash" && project && (
         <TrashDialog
-          title={`Trash of ${project.name}`}
+          title={t("Trash of {name}", { name: project.name })}
           url={`/api/projects/${enc(project.id)}/trash`}
           onClose={close}
           onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
           onRestore={(item) =>
             act(async () => {
               const { restored } = await call<{ restored: string }>("POST", `/api/projects/${enc(project.id)}/trash/restore`, { entry: item.entry });
-              showToast(`${restored} is back`);
+              showToast(t("{name} is back", { name: restored }));
             })
           }
         />
@@ -649,7 +723,7 @@ function App() {
               const { id } = await call<{ id: string }>("POST", "/api/projects", body);
               chooseProject(id);
               close();
-            }, "Project added")
+            }, t("Project added"))
           }
         />
       )}
@@ -662,7 +736,7 @@ function App() {
             act(async () => {
               await call("POST", `/api/projects/${enc(project.id)}/slots`, { name, description, version });
               close();
-            }, `Slot ${name} created`)
+            }, t("Slot {name} created", { name }))
           }
         />
       )}
@@ -675,7 +749,7 @@ function App() {
             act(async () => {
               const { version: n } = await call<{ version: number }>("POST", `${slotUrl(project.id, dialog.slot.name)}/versions`, version);
               close();
-              showToast(`v${n} saved`);
+              showToast(t("v{n} saved", { n }));
             })
           }
         />
@@ -690,7 +764,7 @@ function App() {
               await call("POST", `${slotUrl(project.id, dialog.slot.name)}/clone`, { name });
               if (removeApproval) await call("PUT", `${slotUrl(project.id, name)}/approval`, { version: null });
               close();
-            }, removeApproval ? `${dialog.slot.name} copied to ${name}, without approval` : `${dialog.slot.name} copied to ${name}`)
+            }, removeApproval ? t("{from} copied to {to}, without approval", { from: dialog.slot.name, to: name }) : t("{from} copied to {to}", { from: dialog.slot.name, to: name }))
           }
         />
       )}
@@ -701,11 +775,11 @@ function App() {
         <div key={toast.id} className={`toast${toast.isError ? " is-error" : ""}`} role="status">
           <span className="toast-message">{toast.message}</span>
           {toast.undo && (
-            <button className="toast-undo" onClick={runUndo} title="Undo (Ctrl+Z)">
-              Undo
+            <button className="toast-undo" onClick={runUndo} title={t("Undo (Ctrl+Z)")}>
+              {t("Undo")}
             </button>
           )}
-          <button className="toast-close" onClick={() => setToast(null)} aria-label="Dismiss">
+          <button className="toast-close" onClick={() => setToast(null)} aria-label={t("Dismiss")}>
             <Icon name="x" size={10} />
           </button>
           {toast.undo && <span className="toast-timer" style={{ animationDuration: `${UNDO_MS}ms` }} aria-hidden="true" />}

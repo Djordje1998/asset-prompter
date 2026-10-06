@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ProjectSummary } from "../shared/types";
 import { useDismiss } from "./hooks";
+import { t } from "./i18n";
 import { Icon } from "./icons";
 import { humanTurn } from "./lib";
 
@@ -34,20 +35,20 @@ export function ProjectMenu({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={project ? `Project: ${project.name}. Switch project` : "Choose a project"}
+        aria-label={project ? t("Project: {name}. Switch project", { name: project.name }) : t("Choose a project")}
       >
         <Icon name="folder" className="workspace-icon" />
         <span className="workspace-text">
-          <span className="workspace-label">Project</span>
+          <span className="workspace-label">{t("Project")}</span>
           <span className="workspace-name">
-            {project ? project.name : "None yet"}
-            {project && project.listening > 0 && <span className="agent-lamp" title="An agent is waiting on this project" />}
+            {project ? project.name : t("None yet")}
+            {project && project.listening > 0 && <span className="agent-lamp" title={t("An agent is waiting on this project")} />}
           </span>
         </span>
         <Icon name="caret" size={10} className={`workspace-caret${open ? " is-open" : ""}`} />
       </button>
       {open && (
-        <div className="menu" role="menu" aria-label="Projects">
+        <div className="menu" role="menu" aria-label={t("Projects")}>
           {projects.map((p) => (
             <button
               key={p.id}
@@ -60,8 +61,8 @@ export function ProjectMenu({
               aria-checked={p.id === currentId}
               aria-label={[
                 p.name,
-                humanTurn(p.counts) > 0 ? `${humanTurn(p.counts)} waiting for you` : null,
-                p.listening > 0 ? "agent waiting" : null,
+                humanTurn(p.counts) > 0 ? t("{n} waiting for you", { n: humanTurn(p.counts) }) : null,
+                p.listening > 0 ? t("agent waiting") : null,
                 p.external ? p.path : null,
               ]
                 .filter(Boolean)
@@ -69,7 +70,7 @@ export function ProjectMenu({
             >
               <span className="menu-mark">{p.id === currentId && <Icon name="check" size={12} />}</span>
               <span className="menu-name">{p.name}</span>
-              {p.listening > 0 && <span className="agent-lamp" title="An agent is waiting on this project" />}
+              {p.listening > 0 && <span className="agent-lamp" title={t("An agent is waiting on this project")} />}
               {p.external && (
                 <span className="menu-path" title={p.path}>
                   {p.path}
@@ -86,7 +87,7 @@ export function ProjectMenu({
               onAdd();
             }}
           >
-            Add a project
+            {t("Add a project")}
           </button>
           {trashed > 0 && (
             <button
@@ -98,7 +99,7 @@ export function ProjectMenu({
               }}
             >
               <Icon name="trash" size={12} />
-              Deleted projects
+              {t("Deleted projects")}
               <span className="badge badge-quiet">{trashed}</span>
             </button>
           )}
@@ -112,7 +113,7 @@ export function ProjectMenu({
               }}
             >
               <Icon name="trash" size={12} />
-              {project.external ? `Remove ${project.name} from the list` : `Delete ${project.name}`}
+              {project.external ? t("Remove {name} from the list", { name: project.name }) : t("Delete {name}", { name: project.name })}
             </button>
           )}
         </div>

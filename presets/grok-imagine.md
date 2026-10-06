@@ -1,6 +1,7 @@
 ---
 tool: grok-imagine
-name: Grok Imagine
+name: Grok Imagine
+short: Grok
 checked: 2026-10-06
 prompt_limit: null
 image:

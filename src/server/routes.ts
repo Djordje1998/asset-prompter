@@ -27,6 +27,7 @@ import { afterResults, refreshInfo } from "./analysis";
 import { type Config, saveConfig } from "./config";
 import { writeHowTo } from "./howto";
 import { inside, json, notFound, openInFileManager, serveFile } from "./http";
+import { version } from "../../package.json";
 import { eventStream, notifyChange, refreshWatchers } from "./live";
 import { logoPath } from "./preset";
 import { type Project, findProject, isDir, listProjects } from "./projects";
@@ -108,7 +109,7 @@ export function apiRoutes(app: App, wrap: Wrap) {
         for (const p of all) projectScans.whenNew(p.id, p.path, () => howTo(app, p));
         const list: ProjectSummary[] = all.map((p) => ({ ...p, counts: countStatuses(slotsOf(p)), listening: listening(p.id) }));
         const trashedProjects = listTrash(join(projectsDir, TRASH_DIR), true).filter((i) => i.kind === "project").length;
-        const state: AppState = { projects: list, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir, trashedProjects };
+        const state: AppState = { projects: list, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir, trashedProjects, version };
         return json(state);
       },
     },

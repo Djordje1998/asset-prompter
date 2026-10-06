@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { readStored, useDismiss, writeStored } from "./hooks";
+import { t } from "./i18n";
 import { Icon } from "./icons";
 
 export type Tab = "progress" | "done";
 type PageWidth = "normal" | "wide" | "full";
-/** A wider Done grid fits more tiles of the same size, not bigger tiles. */
+/** A wider Done grid fits more tiles of the same size, not bigger tiles. The labels are translated where shown. */
 const PAGE_WIDTHS: [PageWidth, string][] = [
   ["normal", "Normal"],
   ["wide", "Wide"],
@@ -64,40 +65,40 @@ export function ViewSettings({ tab, view }: { tab: Tab; view: View }) {
   const { width, perRow, compact } = view;
   return (
     <div className="view" ref={ref}>
-      <button className={`view-button${open ? " is-on" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open} title="View settings">
+      <button className={`view-button${open ? " is-on" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open} title={t("View settings")}>
         <Icon name="sliders" />
-        View
+        {t("View")}
       </button>
       {open && (
-        <div className="view-panel" role="dialog" aria-label="View settings">
+        <div className="view-panel" role="dialog" aria-label={t("View settings")}>
           <div className="view-row">
-            <span className="view-label">Width</span>
+            <span className="view-label">{t("Width")}</span>
             <div className="segmented">
               {PAGE_WIDTHS.map(([w, label]) => (
                 <button key={w} className={`segment${width === w ? " is-on" : ""}`} aria-pressed={width === w} onClick={() => view.setWidth(w)}>
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </div>
           </div>
           {tab === "done" && (
             <label className="view-row">
-              <span className="view-label">Per row</span>
+              <span className="view-label">{t("Per row")}</span>
               <input type="range" min={3} max={9} step={1} value={perRow} onChange={(e) => view.setPerRow(Number(e.target.value))} />
               <span className="view-value">{perRow}</span>
             </label>
           )}
           <div className="view-row">
-            <span className="view-label">Density</span>
+            <span className="view-label">{t("Density")}</span>
             <div className="segmented">
               {([false, true] as const).map((c) => (
                 <button key={String(c)} className={`segment${compact === c ? " is-on" : ""}`} aria-pressed={compact === c} onClick={() => view.setCompact(c)}>
-                  {c ? "Compact" : "Normal"}
+                  {c ? t("Compact") : t("Normal")}
                 </button>
               ))}
             </div>
           </div>
-          <p className="view-note">{tab === "done" ? "Applies to the Done grid." : "Applies to the slots in progress."}</p>
+          <p className="view-note">{tab === "done" ? t("Applies to the Done grid.") : t("Applies to the slots in progress.")}</p>
         </div>
       )}
     </div>

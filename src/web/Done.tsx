@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Result, Slot } from "../shared/types";
 import { type LightboxItem, useApp } from "./context";
 import { useEscape } from "./hooks";
+import { t } from "./i18n";
 import { Icon } from "./icons";
 import { copyImage, copyText } from "./lib";
 import { CopyImageButton, Media, SlotNumber, describe } from "./shared";
@@ -17,7 +18,7 @@ function VariantsBadge({ slot }: { slot: Slot }) {
   const ctx = useApp();
   const n = slot.variants.length;
   return (
-    <button className="tile-exports" onClick={() => ctx.openVariants(slot)} title={`${n} ${n === 1 ? "variant" : "variants"} of the final asset`}>
+    <button className="tile-exports" onClick={() => ctx.openVariants(slot)} title={n === 1 ? t("{n} variant of the final asset", { n }) : t("{n} variants of the final asset", { n })}>
       <Icon name="layers" size={12} />
       {n}
     </button>
@@ -27,7 +28,7 @@ function VariantsBadge({ slot }: { slot: Slot }) {
 /** Every variant the agent made from the final asset, ready to copy. */
 export function VariantsList({ slot }: { slot: Slot }) {
   const ctx = useApp();
-  const items: LightboxItem[] = slot.variants.map((c) => ({ url: c.url, kind: c.kind, title: slot.name, tags: ["Variant"], file: c.file }));
+  const items: LightboxItem[] = slot.variants.map((c) => ({ url: c.url, kind: c.kind, title: slot.name, tags: [t("Variant")], file: c.file }));
   return (
     <ul className="exports">
       {slot.variants.map((c, i) => (
@@ -35,7 +36,7 @@ export function VariantsList({ slot }: { slot: Slot }) {
           <button
             className={`export-media${c.info?.width && c.info.width < 256 ? " is-small" : ""}`}
             onClick={() => ctx.openLightbox(items, i)}
-            aria-label={`View ${c.file}`}
+            aria-label={t("View {file}", { file: c.file })}
           >
             <Media item={c} />
           </button>
@@ -47,13 +48,13 @@ export function VariantsList({ slot }: { slot: Slot }) {
           </div>
           <div className="export-actions">
             {c.kind === "image" && (
-              <button className="btn" onClick={() => ctx.act(() => copyImage(c.url), "Image copied")}>
+              <button className="btn" onClick={() => ctx.act(() => copyImage(c.url), t("Image copied"))}>
                 <Icon name="copyimage" />
-                Copy image
+                {t("Copy image")}
               </button>
             )}
-            <button className="link" onClick={() => ctx.act(() => copyText(c.path), "Path copied")}>
-              Copy path
+            <button className="link" onClick={() => ctx.act(() => copyText(c.path), t("Path copied"))}>
+              {t("Copy path")}
             </button>
           </div>
         </li>
@@ -67,10 +68,10 @@ export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () =
   const final = finalResult(slot);
   return (
     <article className="tile">
-      <button className="tile-media" onClick={onOpen} aria-label={`View ${slot.name}, approved version ${slot.approved}`}>
-        {final ? <Media item={final} /> : <span className="tile-missing">No file</span>}
+      <button className="tile-media" onClick={onOpen} aria-label={t("View {name}, approved version {n}", { name: slot.name, n: String(slot.approved) })}>
+        {final ? <Media item={final} /> : <span className="tile-missing">{t("No file")}</span>}
         {final?.kind === "video" && <span className="tile-play" aria-hidden="true">▶</span>}
-        <span className="tile-version" title={`Approved version ${slot.approved}`}>
+        <span className="tile-version" title={t("Approved version {n}", { n: String(slot.approved) })}>
           v{slot.approved}
         </span>
       </button>
@@ -79,12 +80,12 @@ export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () =
       <div className="tile-bar">
         <SlotNumber slot={slot} />
         {/* The name is what people copy most, so clicking it copies it. */}
-        <button className="tile-name" title={`${slot.name}: click to copy`} onClick={() => ctx.act(() => copyText(slot.name), `Slot name "${slot.name}" copied to the clipboard`)}>
+        <button className="tile-name" title={t("{name}: click to copy", { name: slot.name })} onClick={() => ctx.act(() => copyText(slot.name), t('Slot name "{name}" copied to the clipboard', { name: slot.name }))}>
           {slot.name}
         </button>
         <button className="btn btn-small tile-details" onClick={onDetails}>
           <Icon name="info" size={12} />
-          Details
+          {t("Details")}
         </button>
       </div>
     </article>
@@ -122,18 +123,18 @@ export function DetailDialog({ slots, slot, onShow, onClose, paused }: { slots: 
   const outside = (e: React.MouseEvent) => e.target === e.currentTarget && onClose();
   return (
     <div className="overlay detail-overlay" onMouseDown={outside}>
-      <div className="detail-view" role="dialog" aria-label={`Details ${slot.name}`} onMouseDown={outside}>
+      <div className="detail-view" role="dialog" aria-label={t("Details {name}", { name: slot.name })} onMouseDown={outside}>
         <SlotCard key={slot.name} slot={slot} collapsible={false} onClose={onClose} single />
         {many && (
-          <nav className="detail-dock" aria-label="All done slots">
+          <nav className="detail-dock" aria-label={t("All done slots")}>
             <div className="detail-nav">
-              <button className="btn btn-small lightbox-step" onClick={() => step(-1)} aria-label="Previous" title="Previous (Left arrow)">
+              <button className="btn btn-small lightbox-step" onClick={() => step(-1)} aria-label={t("Previous")} title={t("Previous (Left arrow)")}>
                 <Icon name="chevron" className="flip" />
               </button>
               <span className="lightbox-count">
                 {index + 1} / {slots.length}
               </span>
-              <button className="btn btn-small lightbox-step" onClick={() => step(1)} aria-label="Next" title="Next (Right arrow)">
+              <button className="btn btn-small lightbox-step" onClick={() => step(1)} aria-label={t("Next")} title={t("Next (Right arrow)")}>
                 <Icon name="chevron" />
               </button>
             </div>
@@ -148,7 +149,7 @@ export function DetailDialog({ slots, slot, onShow, onClose, paused }: { slots: 
                     aria-selected={current}
                     className={`lightbox-thumb${current ? " is-current" : ""}`}
                     onClick={() => onShow(s.name)}
-                    title={`#${s.number} ${s.name}${current ? ", showing now" : ""}`}
+                    title={current ? t("#{number} {name}, showing now", { number: s.number, name: s.name }) : t("#{number} {name}", { number: s.number, name: s.name })}
                   >
                     <span className="lightbox-thumb-media">
                       {final && (final.kind === "video" ? <video src={`${final.url}#t=0.1`} muted preload="metadata" /> : <img src={final.url} alt="" loading="lazy" />)}

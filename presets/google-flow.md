@@ -1,6 +1,7 @@
 ---
 tool: google-flow
-name: Google Flow
+name: Google Flow
+short: Google Flow
 checked: 2026-10-06
 prompt_limit: null
 image:

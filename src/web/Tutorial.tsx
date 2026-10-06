@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import doneArt from "./art/empty-done.png";
 import { useEscape } from "./hooks";
+import { t } from "./i18n";
 import whyAnyGenerator from "./tutorial/idea-any-generator.webp";
 import whyCostsLess from "./tutorial/idea-costs-less.webp";
 import whyFinalFiles from "./tutorial/idea-final-files.webp";
@@ -41,149 +42,149 @@ interface Step {
 const STEPS: Step[] = [
   {
     id: "why",
-    kicker: "The idea",
-    title: "Your agent plans, you generate",
-    body: "Your agent works in files, so Asset Prompter turns image and video generation into files too. The agent writes what it needs, you make it in the generator you like, and everything comes back to a folder the agent can read.",
+    kicker: t("The idea"),
+    title: t("Your agent plans, you generate"),
+    body: t("Your agent works in files, so Asset Prompter turns image and video generation into files too. The agent writes what it needs, you make it in the generator you like, and everything comes back to a folder the agent can read."),
     points: [
-      "Each side does what it is best at: the agent plans and checks, you generate and decide.",
-      "No MCP server or API key is needed. Use any generator at its own price.",
-      "Your approval is final, so nothing reaches the project without you.",
+      t("Each side does what it is best at: the agent plans and checks, you generate and decide."),
+      t("No MCP server or API key is needed. Use any generator at its own price."),
+      t("Your approval is final, so nothing reaches the project without you."),
     ],
     art: "why",
   },
   {
     id: "welcome",
-    kicker: "Welcome",
-    title: "You and your agent, one shared folder",
-    body: "Your AI agent knows which images and videos it needs. You are the one who can generate them. Asset Prompter is the hand-off between you two, and nothing is final until you approve it.",
+    kicker: t("Welcome"),
+    title: t("You and your agent, one shared folder"),
+    body: t("Your AI agent knows which images and videos it needs. You are the one who can generate them. Asset Prompter is the hand-off between you two, and nothing is final until you approve it."),
     points: [
-      "The pictures use Google Flow as the generator, but it works the same with any image or video app you generate in.",
-      "The agent's review is optional. Approve a result yourself and it goes straight to Done; ask the agent only when you want its opinion.",
-      "This tour takes about two minutes. Use the buttons below or the arrow keys.",
-      "Everything is plain files in a folder. There is no account and no database.",
-      "You can open it again any time with the Tutorial button in the top bar.",
+      t("The pictures use Google Flow as the generator, but it works the same with any image or video app you generate in."),
+      t("The agent's review is optional. Approve a result yourself and it goes straight to Done; ask the agent only when you want its opinion."),
+      t("This tour takes about two minutes. Use the buttons below or the arrow keys."),
+      t("Everything is plain files in a folder. There is no account and no database."),
+      t("You can open it again any time with the Tutorial button in the top bar."),
     ],
     art: "loop",
   },
   {
     id: "projects",
-    kicker: "Projects",
-    title: "Start with a project",
-    body: "A project is just a folder. Each one holds the assets for one piece of work, such as a website or a campaign.",
+    kicker: t("Projects"),
+    title: t("Start with a project"),
+    body: t("A project is just a folder. Each one holds the assets for one piece of work, such as a website or a campaign."),
     points: [
-      "The project you are in. Click it to switch to another one.",
-      "The number counts the slots that wait for you in that project.",
-      "Add a project: make a new one, or point at a folder inside the repo your agent works in.",
+      t("The project you are in. Click it to switch to another one."),
+      t("The number counts the slots that wait for you in that project."),
+      t("Add a project: make a new one, or point at a folder inside the repo your agent works in."),
     ],
     shot: { src: shotProjects, marks: MARKS.projects },
   },
   {
     id: "agent",
-    kicker: "Your agent",
-    title: "Bring in your agent",
-    body: "A new project starts empty. One message is all your agent needs to learn how the folder works.",
+    kicker: t("Your agent"),
+    title: t("Bring in your agent"),
+    body: t("A new project starts empty. One message is all your agent needs to learn how the folder works."),
     points: [
-      "Press Copy agent instructions and paste it into a new chat with your agent. It starts writing prompts into the project.",
-      "The same button is always in the top bar. View shows what gets copied.",
-      "No agent at hand? New slot lets you write a prompt yourself.",
+      t("Press Copy agent instructions and paste it into a new chat with your agent. It starts writing prompts into the project."),
+      t("The same button is always in the top bar. View shows what gets copied."),
+      t("No agent at hand? New slot lets you write a prompt yourself."),
     ],
     shot: { src: shotAgent, marks: MARKS.agent },
   },
   {
     id: "feed",
-    kicker: "The feed",
-    title: "Every asset is a slot",
-    body: "Each card is one slot: one image or video the agent asked for. Its status tag tells you whose turn it is.",
+    kicker: t("The feed"),
+    title: t("Every asset is a slot"),
+    body: t("Each card is one slot: one image or video the agent asked for. Its status tag tells you whose turn it is."),
     points: [
-      "In progress holds the open slots. Approved ones move to Done.",
-      "Filter by status. {status:waiting_generation} and {status:waiting_review} are your turn. {status:waiting_input} means the slot is built from another slot's image and waits until that one is approved.",
-      "The tag on a card shows the step the slot is at now, and whose turn it is.",
-      "Write a new version yourself, clone the slot, or delete it. Deleted slots go to _trash.",
+      t("In progress holds the open slots. Approved ones move to Done."),
+      t("Filter by status. {status:waiting_generation} and {status:waiting_review} are your turn. {status:waiting_input} means the slot is built from another slot's image and waits until that one is approved."),
+      t("The tag on a card shows the step the slot is at now, and whose turn it is."),
+      t("Write a new version yourself, clone the slot, or delete it. Deleted slots go to _trash."),
     ],
     shot: { src: shotFeed, marks: MARKS.feed },
   },
   {
     id: "generate",
-    kicker: "Generate",
-    title: "Generate it, then drop it back",
-    body: "A slot marked {status:waiting_generation} waits for you. Open the tool you generate with, such as Google Flow, and work through the card from top to bottom.",
+    kicker: t("Generate"),
+    title: t("Generate it, then drop it back"),
+    body: t("A slot marked {status:waiting_generation} waits for you. Open the tool you generate with, such as Google Flow, and work through the card from top to bottom."),
     points: [
-      "In the tool, choose these settings first: image or video, the aspect ratio and the model.",
-      "Press {button:Copy prompt} and paste it into the tool's prompt box. The button turns green, so you can see which prompts you already copied.",
-      "Add the reference images the card lists to the tool: press Copy image and paste it there, or drag the picture onto the tool's upload area.",
-      "Drop the result here or choose the file. Images can also be pasted with Ctrl+V. Several results are fine.",
+      t("In the tool, choose these settings first: image or video, the aspect ratio and the model."),
+      t("Press {button:Copy prompt} and paste it into the tool's prompt box. The button turns green, so you can see which prompts you already copied."),
+      t("Add the reference images the card lists to the tool: press Copy image and paste it there, or drag the picture onto the tool's upload area."),
+      t("Drop the result here or choose the file. Images can also be pasted with Ctrl+V. Several results are fine."),
     ],
     shot: { src: shotGenerate, marks: MARKS.generate },
   },
   {
     id: "notify",
-    kicker: "Hand over",
-    title: "Hand it to the agent",
-    body: "The agent can check each result against what it asked for. Already happy with one? Approve it yourself and skip this step.",
+    kicker: t("Hand over"),
+    title: t("Hand it to the agent"),
+    body: t("The agent can check each result against what it asked for. Already happy with one? Approve it yourself and skip this step."),
     points: [
-      "Your result sits in the card. The app checks its size and length against the settings.",
-      "The slot now says {status:waiting_agent}.",
-      "Press {button:Notify agent} when your batch is in. It also tells the agent what you approved. A green dot means the agent is listening, and {button:Stop} beside it ends that; if it is not listening, tell it \"done\" in the chat.",
+      t("Your result sits in the card. The app checks its size and length against the settings."),
+      t("The slot now says {status:waiting_agent}."),
+      t("Press {button:Notify agent} when your batch is in. It also tells the agent what you approved. A green dot means the agent is listening, and {button:Stop} beside it ends that; if it is not listening, tell it \"done\" in the chat."),
     ],
     shot: { src: shotNotify, marks: MARKS.notify },
   },
   {
     id: "review",
-    kicker: "Approve",
-    title: "Read the review, then approve",
-    body: "The agent approves a result or asks for another try. Its approval is a recommendation. Yours is the one that counts.",
+    kicker: t("Approve"),
+    title: t("Read the review, then approve"),
+    body: t("The agent approves a result or asks for another try. Its approval is a recommendation. Yours is the one that counts."),
     points: [
-      "Click the chip to read what the agent thinks of the result.",
-      "With several results the agent picks one (purple check). Click another thumbnail to pick it yourself (green). Click your pick again to take it back.",
-      "Approve makes this version final and moves the slot to Done. From then on the agent leaves it alone.",
+      t("Click the chip to read what the agent thinks of the result."),
+      t("With several results the agent picks one (purple check). Click another thumbnail to pick it yourself (green). Click your pick again to take it back."),
+      t("Approve makes this version final and moves the slot to Done. From then on the agent leaves it alone."),
     ],
     shot: { src: shotReview, marks: MARKS.review },
   },
   {
     id: "changes",
-    kicker: "Change requests",
-    title: "Not right yet? Ask for changes",
-    body: "You never rewrite a prompt yourself. Say what should change, and the agent writes the next version: a new prompt that asks for that change. You generate it like the first one.",
+    kicker: t("Change requests"),
+    title: t("Not right yet? Ask for changes"),
+    body: t("You never rewrite a prompt yourself. Say what should change, and the agent writes the next version: a new prompt that asks for that change. You generate it like the first one."),
     points: [
-      "{button:Request changes} opens a note for the agent. It saves when you click away. Then press {button:Notify agent}: the agent writes v2, and the slot comes back to you as {status:waiting_generation}.",
-      "Earlier versions stay folded under the card, with what you asked for.",
+      t("{button:Request changes} opens a note for the agent. It saves when you click away. Then press {button:Notify agent}: the agent writes v2, and the slot comes back to you as {status:waiting_generation}."),
+      t("Earlier versions stay folded under the card, with what you asked for."),
     ],
     shot: { src: shotChanges, marks: MARKS.changes },
   },
   {
     id: "lightbox",
-    kicker: "Compare",
-    title: "Compare results full size",
-    body: "Click any image to open the viewer. It holds every result of the slot, across all its versions.",
+    kicker: t("Compare"),
+    title: t("Compare results full size"),
+    body: t("Click any image to open the viewer. It holds every result of the slot, across all its versions."),
     points: [
-      "Every result is in the strip. The white frame is the one on screen; the check marks the pick, green for yours and purple for the agent's.",
-      "Select makes the result on screen your pick.",
-      "Copy image puts it on the clipboard, ready to paste as a reference.",
+      t("Every result is in the strip. The white frame is the one on screen; the check marks the pick, green for yours and purple for the agent's."),
+      t("Select makes the result on screen your pick."),
+      t("Copy image puts it on the clipboard, ready to paste as a reference."),
     ],
     shot: { src: shotLightbox, marks: MARKS.lightbox },
   },
   {
     id: "done",
-    kicker: "Done",
-    title: "Collect the finished assets",
-    body: "Done is the shelf of approved assets. They are final: the agent uses these files and only makes variants of them.",
+    kicker: t("Done"),
+    title: t("Collect the finished assets"),
+    body: t("Done is the shelf of approved assets. They are final: the agent uses these files and only makes variants of them."),
     points: [
-      "Click a tile to see the asset full size. Click its name to copy it.",
-      "This badge counts the variants the agent made from it: crops, sizes and formats.",
-      "Copy the image with one click.",
-      "Details shows the whole history. Remove the approval there to reopen the slot, or clone it to try another direction.",
+      t("Click a tile to see the asset full size. Click its name to copy it."),
+      t("This badge counts the variants the agent made from it: crops, sizes and formats."),
+      t("Copy the image with one click."),
+      t("Details shows the whole history. Remove the approval there to reopen the slot, or clone it to try another direction."),
     ],
     shot: { src: shotDone, marks: MARKS.done },
   },
   {
     id: "extras",
-    kicker: "Good to know",
-    title: "That is the whole loop",
-    body: "Prompt, generate, review, approve. A few extras make long sessions easier.",
+    kicker: t("Good to know"),
+    title: t("That is the whole loop"),
+    body: t("Prompt, generate, review, approve. A few extras make long sessions easier."),
     points: [
-      "The browser tab shows how many slots are still open, so the app can wait in the background.",
-      "To change an approved asset, remove its approval in Details, or clone the slot and keep the original.",
-      "Open this tour again any time with the Tutorial button in the top bar.",
+      t("The browser tab shows how many slots are still open, so the app can wait in the background."),
+      t("To change an approved asset, remove its approval in Details, or clone the slot and keep the original."),
+      t("Open this tour again any time with the Tutorial button in the top bar."),
     ],
     art: "extras",
   },
@@ -206,13 +207,13 @@ function Rich({ text }: { text: string }) {
       parts.push(
         <span key={m.index} className={`status-tag status-${status} tour-inline`}>
           <Icon name={STATUS_ICON[status]} size={12} />
-          {STATUS_LABEL[status]}
+          {t(STATUS_LABEL[status])}
         </span>,
       );
     } else {
       parts.push(
         <span key={m.index} className="tour-inline tour-inline-button">
-          {value}
+          {t(value)}
         </span>,
       );
     }
@@ -224,10 +225,10 @@ function Rich({ text }: { text: string }) {
 
 /** The loop on the first step: who does what, in order. */
 const LOOP: { who: string; icon: IconName; tone: string; title: string; text: string; optional?: boolean }[] = [
-  { who: "Agent", icon: "robot", tone: "agent", title: "Writes the prompt", text: "One slot per asset, with the settings to use." },
-  { who: "You", icon: "spark", tone: "generate", title: "Generate it", text: "In Google Flow or any other generator. Drop the result back." },
-  { who: "Agent · optional", icon: "eye", tone: "review", title: "Reviews the result", text: "Only when you want its opinion. Recommends it, or writes the next version.", optional: true },
-  { who: "You", icon: "check", tone: "approved", title: "Approve", text: "Any time, review or not. Your approval is final: the asset is done." },
+  { who: t("Agent"), icon: "robot", tone: "agent", title: t("Writes the prompt"), text: t("One slot per asset, with the settings to use.") },
+  { who: t("You"), icon: "spark", tone: "generate", title: t("Generate it"), text: t("In Google Flow or any other generator. Drop the result back.") },
+  { who: t("Agent · optional"), icon: "eye", tone: "review", title: t("Reviews the result"), text: t("Only when you want its opinion. Recommends it, or writes the next version."), optional: true },
+  { who: t("You"), icon: "check", tone: "approved", title: t("Approve"), text: t("Any time, review or not. Your approval is final: the asset is done.") },
 ];
 
 function LoopArt() {
@@ -247,7 +248,7 @@ function LoopArt() {
         ))}
       </div>
       <div className="tour-loop-back" aria-hidden="true">
-        <span>next version</span>
+        <span>{t("next version")}</span>
       </div>
     </div>
   );
@@ -257,12 +258,12 @@ function LoopArt() {
 // Pictures made with Asset Prompter itself, in projects/asset-prompter-brand (the idea-* slots).
 // `text` stays one short line so the picture keeps its room; `more` shows on hover.
 const WHY: { art: string; title: string; text: string; more: string }[] = [
-  { art: whySeesResult, title: "Sees every result", text: "Checks each one against its prompt.", more: "Compares each image with its prompt and settings, and says what is off." },
-  { art: whyVideo, title: "Understands video", text: "Judges a clip frame by frame.", more: "Frame sheets, the first and last frame and a motion map let it judge a clip it cannot play." },
-  { art: whyFinalFiles, title: "Has every final file", text: "Approved assets land in your project.", more: "Approved assets sit in the project folder, ready for the agent to use in its work." },
-  { art: whyVariants, title: "Makes variants", text: "Crops, sizes and formats, no new run.", more: "Crops, sizes and formats from the final asset, without another generation." },
-  { art: whyAnyGenerator, title: "Any generator", text: "No MCP or API needed.", more: "Works with tools that have no MCP or API, such as Google Flow." },
-  { art: whyCostsLess, title: "Costs less", text: "Use the plan you already pay for.", more: "Generate on a plan you already pay for, instead of paying per API call." },
+  { art: whySeesResult, title: t("Sees every result"), text: t("Checks each one against its prompt."), more: t("Compares each image with its prompt and settings, and says what is off.") },
+  { art: whyVideo, title: t("Understands video"), text: t("Judges a clip frame by frame."), more: t("Frame sheets, the first and last frame and a motion map let it judge a clip it cannot play.") },
+  { art: whyFinalFiles, title: t("Has every final file"), text: t("Approved assets land in your project."), more: t("Approved assets sit in the project folder, ready for the agent to use in its work.") },
+  { art: whyVariants, title: t("Makes variants"), text: t("Crops, sizes and formats, no new run."), more: t("Crops, sizes and formats from the final asset, without another generation.") },
+  { art: whyAnyGenerator, title: t("Any generator"), text: t("No MCP or API needed."), more: t("Works with tools that have no MCP or API, such as Google Flow.") },
+  { art: whyCostsLess, title: t("Costs less"), text: t("Use the plan you already pay for."), more: t("Generate on a plan you already pay for, instead of paying per API call.") },
 ];
 
 function WhyArt() {
@@ -282,12 +283,12 @@ function WhyArt() {
 }
 
 const EXTRAS: { icon: IconName; title: string; text: string }[] = [
-  { icon: "speaker", title: "Sound", text: "A short beep when it is your turn again." },
-  { icon: "sliders", title: "View", text: "Page width, card density and tiles per row." },
-  { icon: "layers", title: "Clone", text: "Copy a slot to try another direction." },
-  { icon: "undo", title: "Undo", text: "Ctrl+Z brings back what you just removed, until your next change." },
-  { icon: "clipboard", title: "Paste", text: "Point at a card and press Ctrl+V." },
-  { icon: "folder", title: "Open folder", text: "Every prompt and result is a plain file." },
+  { icon: "speaker", title: t("Sound"), text: t("A short beep when it is your turn again.") },
+  { icon: "sliders", title: t("View"), text: t("Page width, card density and tiles per row.") },
+  { icon: "layers", title: t("Clone"), text: t("Copy a slot to try another direction.") },
+  { icon: "undo", title: t("Undo"), text: t("Ctrl+Z brings back what you just removed, until your next change.") },
+  { icon: "clipboard", title: t("Paste"), text: t("Point at a card and press Ctrl+V.") },
+  { icon: "folder", title: t("Open folder"), text: t("Every prompt and result is a plain file.") },
 ];
 
 function ExtrasArt() {
@@ -343,16 +344,16 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="overlay tour-overlay">
-      <div className="tour" role="dialog" aria-modal="true" aria-label={`Tutorial, step ${index + 1} of ${STEPS.length}: ${step.title}`}>
+      <div className="tour" role="dialog" aria-modal="true" aria-label={t("Tutorial, step {n} of {total}: {title}", { n: index + 1, total: STEPS.length, title: step.title })}>
         <header className="tour-head">
           <span className="tour-brand">
             <Logo size={20} />
-            How Asset Prompter works
+            {t("How Asset Prompter works")}
           </span>
           <span className="tour-count">
             {index + 1} / {STEPS.length}
           </span>
-          <button className="modal-close" onClick={onClose} aria-label="Close the tutorial" title="Close (Esc)">
+          <button className="modal-close" onClick={onClose} aria-label={t("Close the tutorial")} title={t("Close (Esc)")}>
             <Icon name="x" size={12} />
           </button>
         </header>
@@ -361,7 +362,7 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
           <div className={`tour-frame${step.shot ? "" : " is-art"}`}>
             {ghost && <img key={`ghost-${from}`} className="tour-ghost" src={ghost} alt="" />}
             <div key={step.id} className={`tour-scene is-${direction}${active !== null ? " has-active" : ""}`}>
-              {step.shot && <img className="tour-shot" src={step.shot.src} alt={`The app during the step "${step.title}"`} />}
+              {step.shot && <img className="tour-shot" src={step.shot.src} alt={t("The app during the step \"{title}\"", { title: step.title })} />}
               {step.shot?.marks.map((m, i) => (
                 <span
                   key={i}
@@ -412,7 +413,7 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
         </div>
 
         <footer className="tour-foot">
-          <div className="tour-dots" role="tablist" aria-label="Steps">
+          <div className="tour-dots" role="tablist" aria-label={t("Steps")}>
             {STEPS.map((s, i) => (
               <button
                 key={s.id}
@@ -420,22 +421,22 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
                 aria-selected={i === index}
                 className={`tour-dot${i === index ? " is-on" : ""}${i < index ? " is-seen" : ""}`}
                 onClick={() => go(i)}
-                title={`${i + 1}. ${s.kicker}`}
-                aria-label={`Step ${i + 1}: ${s.kicker}`}
+                title={t("{n}. {kicker}", { n: i + 1, kicker: s.kicker })}
+                aria-label={t("Step {n}: {kicker}", { n: i + 1, kicker: s.kicker })}
               />
             ))}
           </div>
           {!last && (
             <button className="link tour-skip" onClick={onClose}>
-              Skip
+              {t("Skip")}
             </button>
           )}
           <button className="btn" onClick={() => go(index - 1)} disabled={index === 0}>
             <Icon name="chevron" className="flip" size={12} />
-            Back
+            {t("Back")}
           </button>
           <button className="btn btn-primary tour-next" autoFocus onClick={() => (last ? onClose() : go(index + 1))}>
-            {last ? "Start working" : "Next"}
+            {last ? t("Start working") : t("Next")}
             <Icon name={last ? "check" : "chevron"} size={12} />
           </button>
         </footer>

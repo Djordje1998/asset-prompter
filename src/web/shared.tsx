@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Result, Slot } from "../shared/types";
 import { useApp } from "./context";
+import { t } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { copyImage, copyText, createdLabel, formatBytes } from "./lib";
 
@@ -55,7 +56,7 @@ export function Media({
 export function CopyImageButton({ url }: { url: string }) {
   const ctx = useApp();
   return (
-    <button className="tile-copy" onClick={() => ctx.act(() => copyImage(url), "Image copied")} title="Copy image" aria-label="Copy image">
+    <button className="tile-copy" onClick={() => ctx.act(() => copyImage(url), t("Image copied"))} title={t("Copy image")} aria-label={t("Copy image")}>
       <Icon name="copyimage" size={15} />
     </button>
   );
@@ -73,7 +74,7 @@ export function SlotNumber({ slot }: { slot: Slot }) {
 export function CopyName({ name }: { name: string }) {
   const ctx = useApp();
   return (
-    <button className="card-copy" onClick={() => ctx.act(() => copyText(name), `Slot name "${name}" copied to the clipboard`)} title="Copy slot name" aria-label="Copy slot name">
+    <button className="card-copy" onClick={() => ctx.act(() => copyText(name), t('Slot name "{name}" copied to the clipboard', { name }))} title={t("Copy slot name")} aria-label={t("Copy slot name")}>
       <Icon name="copy" size={14} />
     </button>
   );
@@ -103,3 +104,57 @@ export const STATUS_ICON: Record<Slot["status"], IconName> = {
   approved: "check",
   empty: "x",
 };
+
+/** How long a fold takes to open or close; matches the transition in styles.css. */
+export const FOLD_MS = 350;
+
+/**
+ * Content that opens and closes with its height animated, like a drawer. The children are mounted while it is
+ * open and for the closing transition, and unmounted after, so a closed version or card costs nothing. While it
+ * moves, the content is clipped; once open and settled, it is not, so popovers inside it can reach out.
+ */
+export function Fold({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) {
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+  const [settled, setSettled] = useState(open);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    setShown(false);
+    setSettled(false);
+    const timer = setTimeout(() => setMounted(false), FOLD_MS);
+    return () => clearTimeout(timer);
+  }, [open]);
+  // Before the first paint of a newly mounted fold: read its closed layout, so the open state has something
+  // to transition from; then open it. Reading a layout value does this without waiting for a frame.
+  useLayoutEffect(() => {
+    if (!open || !mounted || !ref.current) return;
+    void ref.current.offsetHeight;
+    setShown(true);
+    const timer = setTimeout(() => setSettled(true), FOLD_MS + 40);
+    return () => clearTimeout(timer);
+  }, [open, mounted]);
+  if (!mounted) return null;
+  return (
+    <div ref={ref} className={`fold${shown ? " is-open" : ""}${settled ? " is-settled" : ""}${className ? ` ${className}` : ""}`} aria-hidden={!open || undefined}>
+      <div className="fold-inner">{children}</div>
+    </div>
+  );
+}
+
+/** A rectangle in the given proportions, like the aspect ratio buttons in the generator. */
+export function RatioIcon({ ratio }: { ratio: string }) {
+  const m = /^(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)$/.exec(ratio.trim());
+  if (!m) return null;
+  const r = Number(m[1]) / Number(m[2]);
+  const w = r >= 1 ? 13 : Math.max(5, 13 * r);
+  const h = r >= 1 ? Math.max(5, 13 / r) : 13;
+  return (
+    <svg className="ratio-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <rect x={(16 - w) / 2} y={(16 - h) / 2} width={w} height={h} rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}

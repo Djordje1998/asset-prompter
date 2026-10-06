@@ -1,6 +1,7 @@
 ---
 tool: luma
-name: Luma Dream Machine
+name: Luma Dream Machine
+short: Luma
 checked: 2026-10-06
 prompt_limit: null
 image:

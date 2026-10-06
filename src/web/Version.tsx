@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { Preset, ResolvedInput, Result, Slot, Version } from "../shared/types";
 import { copiedKey, markPromptCopied, useCopied } from "./copied";
 import { type LightboxItem, useApp } from "./context";
 import { useDismiss } from "./hooks";
+import { LOCALE, lang, t } from "./i18n";
 import { Icon } from "./icons";
 import { ROLE_LABEL, call, clipboardFiles, copyImage, copyText, dragOut, enc, slotUrl, versionUrl } from "./lib";
-import { CopyImageButton, KindIcon, Media, describe } from "./shared";
+import { CopyImageButton, KindIcon, Media, RatioIcon, describe } from "./shared";
 
 const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files");
 
@@ -17,7 +18,7 @@ function slotLightboxItems(slot: Slot): LightboxItem[] {
       title: slot.name,
       version: v.n,
       file: c.file,
-      tags: slot.approved === v.n && v.selected === c.file ? ["Approved"] : [],
+      tags: slot.approved === v.n && v.selected === c.file ? [t("Approved")] : [],
       pickable: v.results.length > 1,
     })),
   );
@@ -81,18 +82,18 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             {shown.kind === "video" ? (
               <Media item={shown} controls />
             ) : (
-              <button className="mediabox-open" onClick={() => open(shown)} aria-label="View full size">
+              <button className="mediabox-open" onClick={() => open(shown)} aria-label={t("View full size")}>
                 <Media item={shown} onDragStart={(e) => dragOut(e, shown.url, `${slot.name}-v${version.n}-${shown.file}`)} />
               </button>
             )}
             {shown.kind === "image" && <CopyImageButton url={shown.url} />}
-            {needsPick && <div className="mediabox-pick">The agent will pick one, or choose it yourself</div>}
+            {needsPick && <div className="mediabox-pick">{t("The agent will pick one, or choose it yourself")}</div>}
           </div>
           {results.length > 1 && (
             // Several results get a row of their own to choose from, apart from the file details and tools.
             <div className="results-strip">
               <span className="results-strip-label">
-                {results.length} results{version.selected ? "" : ": pick one"}
+                {version.selected ? t("{n} results", { n: results.length }) : t("{n} results: pick one", { n: results.length })}
               </span>
               <div className="thumbs">
                 {results.map((c) => (
@@ -101,9 +102,9 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
                       title={
                         c.file === version.selected
                           ? version.selectedBy === "agent"
-                            ? `${c.file} is the agent's pick; click to make it yours`
-                            : `${c.file} is your pick; click again to take it back`
-                          : `Select ${c.file}`
+                            ? t("{file} is the agent's pick; click to make it yours", { file: c.file })
+                            : t("{file} is your pick; click again to take it back", { file: c.file })
+                          : t("Select {file}", { file: c.file })
                       }
                       onClick={() => {
                         // A second click on the human's own pick takes it back; the agent's pick becomes theirs.
@@ -133,28 +134,32 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
                 <span
                   className="link drag-handle"
                   draggable
-                  title="Drag this into the generator or a folder"
+                  title={t("Drag this into the generator or a folder")}
                   onDragStart={(e) => dragOut(e, shown.url, `${slot.name}-v${version.n}-${shown.file}`)}
                 >
-                  Drag out
+                  {t("Drag out")}
                 </span>
               )}
-              <button className="link" onClick={() => ctx.act(() => copyText(shown.path), "Path copied")}>
-                Copy path
+              <button className="link" onClick={() => ctx.act(() => copyText(shown.path), t("Path copied"))}>
+                {t("Copy path")}
               </button>
               <button className="link" onClick={() => picker.current?.click()}>
-                Add
+                {t("Add")}
               </button>
-              <button className="link" onClick={paste} title="Add the image you copied in the generator">
-                Paste
+              <button className="link" onClick={paste} title={t("Add the image you copied in the generator")}>
+                {t("Paste")}
               </button>
               <button
                 className="link danger"
                 onClick={() =>
-                  ctx.undoable(() => call("DELETE", `${base}/results/${enc(shown.file)}`), `Removed ${shown.file} from "${slot.name}" v${version.n}`, `${shown.file} is back in "${slot.name}" v${version.n}`)
+                  ctx.undoable(
+                    () => call("DELETE", `${base}/results/${enc(shown.file)}`),
+                    t('Removed {file} from "{slot}" v{n}', { file: shown.file, slot: slot.name, n: version.n }),
+                    t('{file} is back in "{slot}" v{n}', { file: shown.file, slot: slot.name, n: version.n }),
+                  )
                 }
               >
-                Remove
+                {t("Remove")}
               </button>
             </div>
           </div>
@@ -165,14 +170,15 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             <span className="mediabox-icon">
               <Icon name="lock" size={20} />
             </span>
-            <strong>Waiting for {slot.waitingFor.join(", ")}</strong>
+            <strong>{t("Waiting for {slots}", { slots: slot.waitingFor.join(", ") })}</strong>
             <span>
-              Generate this after {slot.waitingFor.length === 1 ? "that slot is" : "those slots are"} approved: its result goes in as{" "}
-              {slot.waitingFor.length === 1 ? "an input" : "inputs"} here.
+              {slot.waitingFor.length === 1
+                ? t("Generate this after that slot is approved: its result goes in as an input here.")
+                : t("Generate this after those slots are approved: its result goes in as inputs here.")}
             </span>
           </div>
           <button className="link" onClick={() => picker.current?.click()}>
-            Add a {wanted} anyway
+            {wanted === "video" ? t("Add a video anyway") : t("Add an image anyway")}
           </button>
         </div>
       ) : (
@@ -181,28 +187,28 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             <span className={`mediabox-icon is-${wanted}`}>
               <KindIcon kind={wanted} size={22} />
             </span>
-            <strong>Drop the {wanted} here</strong>
+            <strong>{wanted === "video" ? t("Drop the video here") : t("Drop the image here")}</strong>
             <span>
               {wanted === "video"
-                ? "or click to choose the downloaded file"
-                : "or click to choose a file, or press Ctrl+V while pointing at this card"}
+                ? t("or click to choose the downloaded file")
+                : t("or click to choose a file, or press Ctrl+V while pointing at this card")}
             </span>
           </button>
           {wanted === "video" ? (
             // Browsers cannot put videos on the clipboard, so a video always comes in as a file.
             <button className="btn btn-primary mediabox-paste" onClick={() => picker.current?.click()}>
               <Icon name="upload" />
-              Choose video
+              {t("Choose video")}
             </button>
           ) : (
-            <button className="btn btn-primary mediabox-paste" onClick={paste} title="Add the image you copied in the generator">
+            <button className="btn btn-primary mediabox-paste" onClick={paste} title={t("Add the image you copied in the generator")}>
               <Icon name="clipboard" />
-              Paste image
+              {t("Paste image")}
             </button>
           )}
         </div>
       )}
-      {over && <div className="mediabox-drop">Drop into v{version.n}</div>}
+      {over && <div className="mediabox-drop">{t("Drop into v{n}", { n: version.n })}</div>}
     </div>
   );
 }
@@ -210,26 +216,12 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
 /** The settings that are easiest to miss in the generator, and change the result the most. */
 const STRONG_CHIPS = new Set(["Length"]);
 
-/** A rectangle in the given proportions, like the aspect ratio buttons in the generator. */
-function RatioIcon({ ratio }: { ratio: string }) {
-  const m = /^(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)$/.exec(ratio.trim());
-  if (!m) return null;
-  const r = Number(m[1]) / Number(m[2]);
-  const w = r >= 1 ? 13 : Math.max(5, 13 * r);
-  const h = r >= 1 ? Math.max(5, 13 / r) : 13;
-  return (
-    <svg className="ratio-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <rect x={(16 - w) / 2} y={(16 - h) / 2} width={w} height={h} rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
 /** The generator a version is made in: its logo on a white plate, so the mark reads on every ground, and its name. */
 export function ToolMark({ tool, presets }: { tool: string; presets: Preset[] }) {
   const preset = presets.find((p) => p.tool === tool);
-  const name = preset?.name ?? tool;
+  const name = preset?.short ?? tool;
   return (
-    <span className={`tool-mark${preset?.logo ? "" : " is-plain"}`} title={preset ? `Generate this in ${name}` : `Tool "${tool}" has no preset`}>
+    <span className={`tool-mark${preset?.logo ? "" : " is-plain"}`} title={preset ? t("Generate this in {name}", { name: preset.name }) : t('Tool "{tool}" has no preset', { tool })}>
       {preset?.logo && (
         <span className="tool-logo">
           <img src={preset.logo} alt="" width={16} height={16} />
@@ -261,24 +253,24 @@ function Settings({ version }: { version: Version }) {
           </li>
         )}
         {m.type && (
-          <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`} title="Image or video">
+          <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`} title={t("Image or video")}>
             {kind && <KindIcon kind={kind} />}
-            {kind === "video" ? "Video" : kind === "image" ? "Image" : m.type}
+            {kind === "video" ? t("Video") : kind === "image" ? t("Image") : m.type}
           </li>
         )}
         {m.aspect_ratio && (
-          <li className="spec" title="Aspect ratio">
+          <li className="spec" title={t("Aspect ratio")}>
             <RatioIcon ratio={m.aspect_ratio} />
             {m.aspect_ratio}
           </li>
         )}
         {m.model && (
-          <li className="spec" title="Model">
+          <li className="spec" title={t("Model")}>
             {m.model}
           </li>
         )}
         {rest.map(([label, value], i) => (
-          <li key={i} className={`spec${STRONG_CHIPS.has(label) ? " spec-strong" : ""}`} title={label}>
+          <li key={i} className={`spec${STRONG_CHIPS.has(label) ? " spec-strong" : ""}`} title={t(label)}>
             {value}
           </li>
         ))}
@@ -315,23 +307,23 @@ function AgentReview({ slot, version }: { slot: Slot; version: Version }) {
   const stale = version.changeRequest !== null && version.changeRequestAt > review.at;
   const title =
     review.verdict === "approve"
-      ? "Agent approves"
+      ? t("Agent approves")
       : review.verdict === "revise"
         ? next
-          ? `Agent asked for another try: v${next.n}`
-          : "Agent wants another try"
-        : "Agent review";
-  const pick = review.pick && version.results.length > 1 ? `, picks ${review.pick}` : "";
+          ? t("Agent asked for another try: v{n}", { n: next.n })
+          : t("Agent wants another try")
+        : t("Agent review");
+  const label = review.pick && version.results.length > 1 ? t("{title}, picks {file}", { title, file: review.pick }) : title;
   const tone = review.errors.length ? "is-error" : review.verdict === "approve" ? "is-approve" : "is-agent";
   return (
-    <ChipPop label={title + pick} tone={tone} badge={stale && <span className="pop-dot" title="Your change request is waiting for the agent" />}>
-      <p className="pop-text">{review.text || "The agent left no note."}</p>
+    <ChipPop label={label} tone={tone} badge={stale && <span className="pop-dot" title={t("Your change request is waiting for the agent")} />}>
+      <p className="pop-text">{review.text || t("The agent left no note.")}</p>
       {review.errors.map((e, i) => (
         <div key={i} className="pop-note">
           v{version.n}.review.md: {e}
         </div>
       ))}
-      {stale && <div className="pop-note">Your change request is waiting for the agent.</div>}
+      {stale && <div className="pop-note">{t("Your change request is waiting for the agent.")}</div>}
     </ChipPop>
   );
 }
@@ -339,7 +331,7 @@ function AgentReview({ slot, version }: { slot: Slot; version: Version }) {
 export function WarningChip({ label, items }: { label: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <ChipPop label={items.length > 1 ? `${label} (${items.length})` : label} tone="is-warn">
+    <ChipPop label={items.length > 1 ? t("{label} ({n})", { label, n: items.length }) : label} tone="is-warn">
       {items.map((w, i) => (
         <p key={i} className="pop-text">
           {w}
@@ -349,22 +341,73 @@ export function WarningChip({ label, items }: { label: string; items: string[] }
   );
 }
 
-function InputTile({ input }: { input: ResolvedInput }) {
+/** The frame roles sit on a rail in clip order; every other input is a reference. */
+const FRAME_ORDER = ["start_frame", "keyframe", "end_frame"];
+
+/** The viewer's item for an input, or null when there is nothing to show yet. */
+function inputItem(input: ResolvedInput): LightboxItem | null {
+  if (!input.url || !input.kind) return null;
+  const name = input.source.split(/[\/]/).pop() ?? input.source;
+  const label = input.role ? t(ROLE_LABEL[input.role] ?? input.role) : t("Input");
+  return { url: input.url, kind: input.kind, title: input.fromSlot ? input.source : name, version: input.sourceVersion ?? undefined, tags: [label], file: input.fromSlot ? undefined : input.source };
+}
+
+function Inputs({ inputs }: { inputs: ResolvedInput[] }) {
+  const frames = inputs.filter((i) => FRAME_ORDER.includes(i.role ?? "")).sort((a, b) => FRAME_ORDER.indexOf(a.role!) - FRAME_ORDER.indexOf(b.role!));
+  const references = inputs.filter((i) => !FRAME_ORDER.includes(i.role ?? ""));
+  const hasEnd = frames.some((f) => f.role === "end_frame");
+  // One list for the viewer, frames first, so the strip at its bottom walks through every input of the version.
+  const ordered = [...frames, ...references];
+  const items = ordered.map(inputItem).filter((i): i is LightboxItem => i !== null);
+  const open = (input: ResolvedInput) => {
+    const item = inputItem(input);
+    return item ? { items, index: items.findIndex((i) => i.url === item.url) } : null;
+  };
+  return (
+    <div className="input-groups">
+      {frames.length > 0 && (
+        <div className="frames">
+          <span className="input-group-label">{t("Frames")}</span>
+          <div className="clip">
+            {frames.map((input, i) => (
+              <Fragment key={i}>
+                {i > 0 && <span className="clip-track" aria-hidden="true" />}
+                <InputTile input={input} open={open} />
+              </Fragment>
+            ))}
+            {/* The clip runs on from the last frame when no end frame is set. */}
+            {!hasEnd && <span className="clip-track is-open" aria-hidden="true" />}
+          </div>
+        </div>
+      )}
+      {references.length > 0 && (
+        <div className="references">
+          <span className="input-group-label">{references.length === 1 ? t("Reference") : t("References ({n})", { n: references.length })}</span>
+          <ul className="inputs is-compact">
+            {references.map((input, i) => (
+              <InputTile key={i} input={input} open={open} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InputTile({ input, open }: { input: ResolvedInput; open: (input: ResolvedInput) => { items: LightboxItem[]; index: number } | null }) {
   const ctx = useApp();
-  const label = input.role ? (ROLE_LABEL[input.role] ?? input.role) : "Input";
+  const label = input.role ? t(ROLE_LABEL[input.role] ?? input.role) : t("Input");
   const name = input.source.split(/[\\/]/).pop() ?? input.source;
   return (
-    <li className="input">
+    <li className={`input${input.role ? ` is-${input.role}` : ""}`}>
       {input.url && input.kind ? (
         <button
           className="input-thumb"
-          aria-label={`View the ${label.toLowerCase()}`}
-          onClick={() =>
-            ctx.openLightbox(
-              [{ url: input.url!, kind: input.kind!, title: input.fromSlot ? input.source : name, version: input.sourceVersion ?? undefined, tags: [label], file: input.fromSlot ? undefined : input.source }],
-              0,
-            )
-          }
+          aria-label={t("View the {label}", { label: label.toLowerCase() })}
+          onClick={() => {
+            const target = open(input);
+            if (target) ctx.openLightbox(target.items, target.index);
+          }}
           draggable
           onDragStart={(e) => dragOut(e, input.url!, name)}
         >
@@ -376,20 +419,24 @@ function InputTile({ input }: { input: ResolvedInput }) {
       <div className="input-body">
         <div className="input-role">{label}</div>
         <div className="input-source" title={input.path ?? input.source}>
-          {input.fromSlot ? `from ${input.source}${input.sourceVersion ? ` v${input.sourceVersion}` : ""}` : input.source}
+          {input.fromSlot
+            ? input.sourceVersion
+              ? t("from {source} v{n}", { source: input.source, n: input.sourceVersion })
+              : t("from {source}", { source: input.source })
+            : name}
         </div>
-        {input.fromSlot && !input.missing && !input.sourceApproved && <div className="input-unapproved">Not approved yet</div>}
+        {input.fromSlot && !input.missing && !input.sourceApproved && <div className="input-unapproved">{t("Not approved yet")}</div>}
         {input.missing ? (
           <div className="input-missing">{input.missing}</div>
         ) : (
           <div className="input-actions">
             {input.kind === "image" && (
-              <button className="link" onClick={() => ctx.act(() => copyImage(input.url!), "Image copied")}>
-                Copy image
+              <button className="link" onClick={() => ctx.act(() => copyImage(input.url!), t("Image copied"))}>
+                {t("Copy image")}
               </button>
             )}
-            <button className="link" onClick={() => ctx.act(() => copyText(input.path!), "Path copied")}>
-              Copy path
+            <button className="link" onClick={() => ctx.act(() => copyText(input.path!), t("Path copied"))}>
+              {t("Copy path")}
             </button>
           </div>
         )}
@@ -425,7 +472,7 @@ function ChangeRequest({ slot, version, autoFocus, onClose }: { slot: Slot; vers
     await ctx.act(async () => {
       await call("PUT", `${versionUrl(ctx.project.id, slot.name, version.n)}/change-request`, { text });
       ok = true;
-    }, text.trim() ? "Change request sent to the agent" : "Change request removed");
+    }, text.trim() ? t("Change request sent to the agent") : t("Change request removed"));
     if (ok) setState("saved");
     else {
       dirty.current = true;
@@ -433,16 +480,23 @@ function ChangeRequest({ slot, version, autoFocus, onClose }: { slot: Slot; vers
     }
   };
   const saveKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "Cmd+Enter" : "Ctrl+Enter";
-  const hint = state === "dirty" ? `Not saved yet. Saves when you click away, or press ${saveKey}.` : state === "saving" ? "Saving" : state === "saved" ? "Saved" : "";
+  const hint =
+    state === "dirty"
+      ? t("Not saved yet. Saves when you click away, or press {key}.", { key: saveKey })
+      : state === "saving"
+        ? t("Saving")
+        : state === "saved"
+          ? t("Saved")
+          : "";
   return (
     <div className="feedback-wrap">
       {/* Clicking it blurs the field first, which saves any unsaved text. */}
-      <button className="feedback-close" onClick={onClose} title="Hide" aria-label="Hide the change request">
+      <button className="feedback-close" onClick={onClose} title={t("Hide")} aria-label={t("Hide the change request")}>
         <Icon name="x" size={10} />
       </button>
       <textarea
         className="feedback"
-        placeholder="What should change? The agent writes the next version from this result, its prompt and your request."
+        placeholder={t("What should change? The agent writes the next version from this result, its prompt and your request.")}
         value={text}
         rows={2}
         autoFocus={autoFocus}
@@ -479,13 +533,13 @@ function CopyPrompt({ slot, version }: { slot: Slot; version: Version }) {
         ctx.act(async () => {
           await copyText(version.prompt);
           markPromptCopied(key, version.prompt);
-        }, "Prompt copied")
+        }, t("Prompt copied"))
       }
       disabled={!version.prompt}
-      title={copied ? "Already copied once; click to copy again" : "Copy the prompt for the generator"}
+      title={copied ? t("Already copied once; click to copy again") : t("Copy the prompt for the generator")}
     >
       <Icon name={copied ? "check" : "clipboard"} />
-      {copied ? "Copied" : "Copy prompt"}
+      {copied ? t("Copied") : t("Copy prompt")}
     </button>
   );
 }
@@ -508,7 +562,7 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
       <div className="version-info">
         {version.errors.length > 0 && (
           <div className="notice notice-error">
-            <strong>This version file has problems</strong>
+            <strong>{t("This version file has problems")}</strong>
             {version.errors.map((e, i) => (
               <div key={i}>{e}</div>
             ))}
@@ -517,13 +571,13 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
         {(version.warnings.length > 0 || version.resultNotes.length > 0 || (hasMedia && version.review)) && (
           <div className="pop-row">
             {hasMedia && <AgentReview slot={slot} version={version} />}
-            <WarningChip label="Doesn't match the settings" items={version.resultNotes} />
-            <WarningChip label="Settings to check" items={version.warnings} />
+            <WarningChip label={t("Doesn't match the settings")} items={version.resultNotes} />
+            <WarningChip label={t("Settings to check")} items={version.warnings} />
           </div>
         )}
         {version.meta.changes && (
           <p className="changes">
-            <span>Changed in v{version.n}</span> {version.meta.changes}
+            <span>{t("Changed in v{n}", { n: version.n })}</span> {version.meta.changes}
           </p>
         )}
         <div className="prompt">
@@ -531,33 +585,27 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
           <p className="prompt-text">{version.prompt || version.raw}</p>
           <div className="prompt-bar">
             <CopyPrompt slot={slot} version={version} />
-            <span className="prompt-count">{version.prompt.length.toLocaleString()} characters</span>
+            <span className="prompt-count">{t("{n} characters", { n: version.prompt.length.toLocaleString(LOCALE[lang]) })}</span>
             <button className="link prompt-more" onClick={() => ctx.openPrompt(slot, version)}>
-              Show all
+              {t("Show all")}
             </button>
           </div>
         </div>
-        {version.inputs.length > 0 && (
-          <ul className="inputs">
-            {version.inputs.map((input, i) => (
-              <InputTile key={i} input={input} />
-            ))}
-          </ul>
-        )}
+        {version.inputs.length > 0 && <Inputs inputs={version.inputs} />}
         {hasMedia && showComment && (
           <ChangeRequest slot={slot} version={version} autoFocus={commenting} onClose={() => setShowComment(false)} />
         )}
         {hasMedia && (
           <div className="version-actions">
             {isApproved ? (
-              <button className="btn btn-unapprove" onClick={() => ctx.act(() => call("PUT", approval, { version: null }), "Approval removed")}>
+              <button className="btn btn-unapprove" onClick={() => ctx.act(() => call("PUT", approval, { version: null }), t("Approval removed"))}>
                 <Icon name="undo" />
-                Remove approval
+                {t("Remove approval")}
               </button>
             ) : (
-              <button className="btn btn-approve" onClick={() => ctx.act(() => call("PUT", approval, { version: version.n }), `v${version.n} approved`)}>
+              <button className="btn btn-approve" onClick={() => ctx.act(() => call("PUT", approval, { version: version.n }), t("v{n} approved", { n: version.n }))}>
                 <Icon name="check" />
-                Approve v{version.n}
+                {t("Approve v{n}", { n: version.n })}
               </button>
             )}
             {/* An approved version is finished: to change it, remove the approval first. */}
@@ -570,18 +618,18 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
                 }}
               >
                 <Icon name="pencil" />
-                {version.changeRequest ? "Edit change request" : "Request changes"}
+                {version.changeRequest ? t("Edit change request") : t("Request changes")}
               </button>
             )}
             {isApproved && slot.variants.length > 0 && (
               <button className="btn" onClick={() => ctx.openVariants(slot)}>
                 <Icon name="layers" />
-                {slot.variants.length} {slot.variants.length === 1 ? "variant" : "variants"}
+                {slot.variants.length === 1 ? t("{n} variant", { n: slot.variants.length }) : t("{n} variants", { n: slot.variants.length })}
               </button>
             )}
             <button className="link link-icon" onClick={() => ctx.act(() => call("POST", "/api/open", { path: version.dir }))}>
               <Icon name="folder" />
-              Open folder
+              {t("Open folder")}
             </button>
           </div>
         )}

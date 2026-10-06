@@ -1,4 +1,5 @@
 import type { Status } from "../shared/types";
+import { LOCALE, lang, t } from "./i18n";
 
 /** Fired after every request that changed something, so an older undo can no longer apply. */
 export const CHANGED_EVENT = "app-changed";
@@ -13,7 +14,7 @@ export async function call<T = unknown>(method: string, url: string, body?: unkn
     body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.error ?? t("Request failed ({status})", { status: res.status }));
   if (method !== "GET" && !NOT_A_CHANGE.test(url)) window.dispatchEvent(new Event(CHANGED_EVENT));
   return data as T;
 }
@@ -40,13 +41,13 @@ export async function copyText(text: string): Promise<void> {
 
 /** Images (or videos) on the clipboard, e.g. from a generator's "Copy image". */
 export async function clipboardFiles(): Promise<File[]> {
-  if (!navigator.clipboard?.read) throw new Error("This browser cannot read images from the clipboard. Point at the card and press Ctrl+V instead.");
+  if (!navigator.clipboard?.read) throw new Error(t("This browser cannot read images from the clipboard. Point at the card and press Ctrl+V instead."));
   let items: ClipboardItems;
   try {
     items = await navigator.clipboard.read();
   } catch (e) {
     if ((e as DOMException).name === "NotAllowedError") {
-      throw new Error("The browser blocked clipboard access. Allow it for this page, or point at the card and press Ctrl+V.");
+      throw new Error(t("The browser blocked clipboard access. Allow it for this page, or point at the card and press Ctrl+V."));
     }
     throw e;
   }
@@ -57,7 +58,7 @@ export async function clipboardFiles(): Promise<File[]> {
     const blob = await item.getType(type);
     files.push(new File([blob], `pasted.${type.split("/")[1]!.replace("jpeg", "jpg")}`, { type }));
   }
-  if (files.length === 0) throw new Error("There is no image on the clipboard. Copy the image in the generator first.");
+  if (files.length === 0) throw new Error(t("There is no image on the clipboard. Copy the image in the generator first."));
   return files;
 }
 
@@ -71,7 +72,7 @@ export async function copyImage(url: string): Promise<void> {
   canvas.height = img.naturalHeight;
   canvas.getContext("2d")!.drawImage(img, 0, 0);
   const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
-  if (!blob) throw new Error("This image could not be copied.");
+  if (!blob) throw new Error(t("This image could not be copied."));
   await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 }
 
@@ -103,33 +104,31 @@ export function onboardingMessage(projectPath: string): string {
   ].join("\n");
 }
 
-const WHEN = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const WHEN = new Intl.DateTimeFormat(LOCALE[lang], { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /** "just now", "5 minutes ago", "3 days ago". */
 export function timeAgo(ms: number, now = Date.now()): string {
   const s = Math.max(0, (now - ms) / 1000);
-  const steps: [number, string][] = [
-    [60, "second"],
-    [60, "minute"],
-    [24, "hour"],
-    [30, "day"],
-    [12, "month"],
-    [Infinity, "year"],
+  // Each unit's label is a whole sentence, singular and plural, so a language can word it as it likes.
+  const steps: [number, (n: number) => string][] = [
+    [60, (n) => (n === 1 ? t("{n} second ago", { n }) : t("{n} seconds ago", { n }))],
+    [60, (n) => (n === 1 ? t("{n} minute ago", { n }) : t("{n} minutes ago", { n }))],
+    [24, (n) => (n === 1 ? t("{n} hour ago", { n }) : t("{n} hours ago", { n }))],
+    [30, (n) => (n === 1 ? t("{n} day ago", { n }) : t("{n} days ago", { n }))],
+    [12, (n) => (n === 1 ? t("{n} month ago", { n }) : t("{n} months ago", { n }))],
+    [Infinity, (n) => (n === 1 ? t("{n} year ago", { n }) : t("{n} years ago", { n }))],
   ];
-  if (s < 45) return "just now";
+  if (s < 45) return t("just now");
   let n = s;
-  for (const [size, unit] of steps) {
-    if (n < size) {
-      const r = Math.max(1, Math.round(n));
-      return `${r} ${unit}${r === 1 ? "" : "s"} ago`;
-    }
+  for (const [size, label] of steps) {
+    if (n < size) return label(Math.max(1, Math.round(n)));
     n /= size;
   }
   return "";
 }
 
 /** Hover text for a slot's number: when it was made, as a date and as time ago. */
-export const createdLabel = (number: number, ms: number) => `Slot #${number}, created ${WHEN.format(ms)} (${timeAgo(ms)})`;
+export const createdLabel = (number: number, ms: number) => t("Slot #{number}, created {when} ({ago})", { number, when: WHEN.format(ms), ago: timeAgo(ms) });
 
 export const formatBytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
