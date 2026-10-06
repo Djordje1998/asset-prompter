@@ -12,7 +12,8 @@ import { fileLog, useBriefingLog } from "./wake";
 const config = loadConfig();
 const projectsDir = resolve(APP_ROOT, config.projectsDir);
 mkdirSync(projectsDir, { recursive: true });
-const app: App = { config, projectsDir, presets: loadPresets(join(APP_ROOT, "presets")) };
+const presetsDir = join(APP_ROOT, "presets");
+const app: App = { config, projectsDir, presets: loadPresets(presetsDir), presetsDir };
 // Next to config.json, so a second instance with its own config keeps its own record.
 useBriefingLog(fileLog(join(dirname(CONFIG_PATH), "briefings.json")));
 

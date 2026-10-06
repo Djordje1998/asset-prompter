@@ -87,6 +87,10 @@ export const ROLE_LABEL: Record<string, string> = {
   end_frame: "End frame",
   ingredient: "Ingredient",
   reference: "Reference",
+  keyframe: "Keyframe",
+  video: "Video",
+  audio: "Audio",
+  source: "Source",
 };
 
 export function onboardingMessage(projectPath: string): string {

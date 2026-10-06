@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { ProjectSummary, Slot, Version } from "../shared/types";
+import type { Preset, ProjectSummary, Slot, Version } from "../shared/types";
 
 export interface LightboxItem {
   url: string;
@@ -18,6 +18,8 @@ export interface LightboxItem {
 /** What every card needs from the app: the open project, and the ways to change it or open a dialog. */
 export interface Ctx {
   project: ProjectSummary;
+  /** The installed tool presets: what each generator offers, and its logo. */
+  presets: Preset[];
   /** Runs a change, reports the outcome in the toast and reloads the feed. */
   act: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
   toast: (message: string, isError?: boolean) => void;

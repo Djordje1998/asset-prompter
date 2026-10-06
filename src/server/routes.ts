@@ -28,6 +28,7 @@ import { type Config, saveConfig } from "./config";
 import { writeHowTo } from "./howto";
 import { inside, json, notFound, openInFileManager, serveFile } from "./http";
 import { eventStream, notifyChange, refreshWatchers } from "./live";
+import { logoPath } from "./preset";
 import { type Project, findProject, isDir, listProjects } from "./projects";
 import { projectScans, selfContained } from "./scans";
 import { TRASH_DIR, countStatuses, fileUrl, mediaKind, scanProject } from "./store";
@@ -38,6 +39,8 @@ export interface App {
   /** `config.projectsDir`, resolved. */
   projectsDir: string;
   presets: Preset[];
+  /** The folder the presets and their logos were read from. */
+  presetsDir: string;
 }
 
 type Params = Record<string, string>;
@@ -111,6 +114,14 @@ export function apiRoutes(app: App, wrap: Wrap) {
     },
 
     "/api/events": { GET: () => eventStream() },
+
+    "/api/presets/:tool/logo": {
+      GET: (req, p) => {
+        const preset = presets.find((x) => x.tool === p.tool);
+        const path = preset && logoPath(app.presetsDir, preset.tool);
+        return path ? serveFile(req, path) : new Response("Not found", { status: 404 });
+      },
+    },
 
     "/api/ext-file": {
       GET: (req) => {

@@ -56,7 +56,7 @@ The folder is the only source of truth. There is no database. The exact file lay
 ## Settings
 
 - `config.json` (created on first run): port, projects folder, added external folders, whether to open the browser.
-- `presets/*.md`: the models and settings each generator offers. They feed `HOW-TO-USE.md` and the warnings on cards. Edit `presets/google-flow.md` when Flow changes.
+- `presets/<tool>.md`: what each generator offers: its models, modes, lengths, resolutions, aspect ratios, how many input files a generation takes, and notes for the agent. They feed the Tools section of `HOW-TO-USE.md`, the choices in the New slot form and the warnings on cards. Seven ship: ChatGPT Images, Dreamina, Google Flow, Grok Imagine, Leonardo.Ai, Luma Dream Machine and Midjourney, as checked in October 2026. A picture named `presets/<tool>.svg` or `.png` next to the file is the tool's logo on the cards. Each slot names its own tool, so one project can use several. When a tool changes, edit its file; for a new tool, copy one and restart the app.
 
 ## Tests
 

@@ -258,6 +258,7 @@ function App() {
     () =>
       project && {
         project,
+        presets: state?.presets ?? [],
         act,
         toast: showToast,
         undoable: (fn, done, undone) =>
@@ -275,7 +276,7 @@ function App() {
         openVariants: (slot) => setVariantsOf(slot.name),
         setPasteTarget: (target) => (pasteTarget.current = target),
       },
-    [project, act, showToast, upload],
+    [project, state?.presets, act, showToast, upload],
   );
 
   const chooseProject = (id: string) => {
@@ -655,6 +656,7 @@ function App() {
       {dialog?.kind === "slot" && project && (
         <NewSlotDialog
           presets={state.presets}
+          defaultTool={(slots ?? []).flatMap((s) => s.versions.map((v) => v.meta.tool)).find((t) => t && state.presets.some((p) => p.tool === t)) ?? undefined}
           onClose={close}
           onCreate={(name, description, version) =>
             act(async () => {

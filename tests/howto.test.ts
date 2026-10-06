@@ -11,8 +11,10 @@ const other: Preset = {
   tool: "other-tool",
   name: "Other Tool",
   prompt_limit: 500,
-  image: { models: [{ name: "Painter 1", max_inputs: 2 }], aspect_ratios: ["1:1"] },
-  notes: "Other Tool has no video.",
+  checked: "2026-10-06",
+  logo: null,
+  image: { models: [{ name: "Painter 1", max_inputs: 2, about: "Paints" }], aspect_ratios: ["1:1"] },
+  notes: "Other Tool paints only.",
 };
 
 test("the Waiting section and the Notify hint appear only with a wait URL", () => {
@@ -31,13 +33,26 @@ test("every preset tool is listed with its models and limits", () => {
   const text = howToUse([...presets, other]);
   expect(presets.length).toBeGreaterThan(0);
   for (const preset of [...presets, other]) {
-    expect(text).toContain(`### \`tool: ${preset.tool}\` (${preset.name})`);
+    expect(text).toContain(`### \`tool: ${preset.tool}\` (${preset.name}, checked ${preset.checked})`);
     for (const section of [preset.image, preset.video]) for (const model of section?.models ?? []) expect(text).toContain(`\`${model.name}\``);
   }
-  expect(text).toContain("| model | max references |");
+  expect(text).toContain("| model | max references | notes |");
+  expect(text).toContain("| `Painter 1` | 2 | Paints |");
   expect(text).toContain('- aspect_ratio: "1:1"');
   expect(text).toContain("Prompts are limited to 500 characters.");
-  expect(text).toContain("Other Tool has no video.");
+  expect(text).toContain("Other Tool paints only.");
+  expect(text).toContain("Other Tool makes no video.");
+  expect(text).toContain("where the human's interface differs from a preset, the interface is right.");
+  // The modes of a video section are a table of the input roles each takes.
+  expect(text).toContain("| mode | input roles it takes | needs | what it is |");
+  expect(text).toContain("| `ingredients` | `ingredient` | `ingredient` | Ingredients to Video");
+  expect(text).toContain("| `frames` | `start_frame`, `end_frame` | – |");
+  // Several tools: the agent is told to ask which ones the human uses.
+  expect(text).toContain("Installed: `chatgpt`, `dreamina`, `google-flow`, `grok-imagine`, `leonardo`, `luma`, `midjourney`, `other-tool`.");
+  expect(howToUse([other])).not.toContain("Installed:");
+  // Nothing in the instructions is about one tool: Flow's modes are only in its own section.
+  const before = text.slice(0, text.indexOf("## Tools"));
+  expect(before).not.toMatch(/Flow|ingredient/);
 });
 
 test("without presets the human is asked which tool to use", () => {

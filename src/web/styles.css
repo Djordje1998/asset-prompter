@@ -1764,18 +1764,7 @@ button {
 */
 /* The head of the prompt box: what to choose in the generator before pasting the prompt below it. */
 .specs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  padding: 7px 14px;
   border-bottom: var(--line);
-}
-
-.specs-label {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
 }
 
 .spec-list {
@@ -1784,7 +1773,7 @@ button {
   align-items: center;
   row-gap: 4px;
   margin: 0;
-  padding: 0;
+  padding: 7px 14px;
   list-style: none;
 }
 
@@ -1819,6 +1808,31 @@ button {
 
 .spec-kind.is-video {
   --tone: var(--video);
+}
+
+/* The generator: its logo on a small white plate, so a black mark shows on the dark ground too. */
+.tool-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid var(--edge-strong);
+  flex: none;
+}
+
+.tool-logo img {
+  display: block;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
 }
 
 /* The setting easiest to miss in the generator. */
@@ -3037,7 +3051,7 @@ video.is-loading {
   padding: 6px 10px;
 }
 
-.feed.is-compact .specs {
+.feed.is-compact .spec-list {
   padding: 5px 10px;
 }
 

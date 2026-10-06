@@ -1,38 +1,58 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Preset, PresetModel, PresetSection } from "../shared/types";
+import type { Preset, PresetMode, PresetModel, PresetSection } from "../shared/types";
 
 export const HOWTO_FILE = "HOW-TO-USE.md";
 
 const COLUMNS: [string, (m: PresetModel) => string | undefined][] = [
-  ["mode", (m) => m.modes?.join(", ")],
+  ["modes", (m) => m.modes?.join(", ")],
   ["duration", (m) => m.durations?.join(", ")],
   ["resolution", (m) => m.resolutions?.join(", ")],
+  ["aspect_ratio", (m) => m.aspect_ratios?.map((a) => `"${a}"`).join(", ")],
   ["max inputs", (m) => m.max_inputs?.toString()],
+  ["notes", (m) => m.about],
 ];
 
-/** max_inputs caps reference images for images and ingredients for video. */
-const INPUT_LIMIT_LABEL = { image: "max references", video: "max ingredients" };
+/** max_inputs caps reference images for images and all attached files for video. */
+const INPUT_LIMIT_LABEL = { image: "max references", video: "max inputs" };
+
+const row = (cells: string[]) => `| ${cells.join(" | ")} |`;
+const code = (s: string) => `\`${s}\``;
+
+function modesText(modes: Record<string, PresetMode>): string[] {
+  const entries = Object.entries(modes);
+  const about = entries.some(([, m]) => m.about);
+  const extra = (cell: string) => (about ? [cell] : []);
+  return [
+    row(["mode", "input roles it takes", "needs", ...extra("what it is")]),
+    row(["---", "---", "---", ...extra("---")]),
+    ...entries.map(([name, m]) => row([code(name), m.roles.length ? m.roles.map(code).join(", ") : "none", m.needs ? code(m.needs) : "–", ...extra(m.about ?? "")])),
+  ];
+}
 
 function sectionText(kind: "image" | "video", section: PresetSection): string {
   const columns = COLUMNS.filter(([, get]) => section.models.some((m) => get(m) !== undefined));
-  const row = (cells: string[]) => `| ${cells.join(" | ")} |`;
   const lines = [
-    `\`type: ${kind}\``,
+    code(`type: ${kind}`),
     "",
     row(["model", ...columns.map(([name]) => (name === "max inputs" ? INPUT_LIMIT_LABEL[kind] : name))]),
     row(["---", ...columns.map(() => "---")]),
-    ...section.models.map((m) => row([`\`${m.name}\``, ...columns.map(([, get]) => get(m) ?? "–")])),
-    "",
+    ...section.models.map((m) => row([code(m.name), ...columns.map(([, get]) => get(m) ?? "–")])),
   ];
-  if (section.aspect_ratios) lines.push(`- aspect_ratio: ${section.aspect_ratios.map((a) => `"${a}"`).join(", ")}`);
+  if (section.aspect_ratios) {
+    const perModel = columns.some(([n]) => n === "aspect_ratio") ? " (unless the model's row says otherwise)" : "";
+    lines.push("", `- aspect_ratio: ${section.aspect_ratios.map((a) => `"${a}"`).join(", ")}${perModel}`);
+  }
+  if (section.modes) lines.push("", ...modesText(section.modes));
   return lines.join("\n");
 }
 
 function presetText(preset: Preset): string {
-  const parts = [`### \`tool: ${preset.tool}\` (${preset.name})`];
+  const parts = [`### ${code(`tool: ${preset.tool}`)} (${preset.name}${preset.checked ? `, checked ${preset.checked}` : ""})`];
   if (preset.image) parts.push(sectionText("image", preset.image));
   if (preset.video) parts.push(sectionText("video", preset.video));
+  if (!preset.image) parts.push(`${preset.name} makes no images.`);
+  if (!preset.video) parts.push(`${preset.name} makes no video.`);
   if (preset.prompt_limit !== null) parts.push(`Prompts are limited to ${preset.prompt_limit} characters.`);
   if (preset.notes) parts.push(preset.notes);
   return parts.join("\n\n");
@@ -141,9 +161,9 @@ Slow push-in toward the cafe entrance at dusk. Rain on the cobblestones, warm li
 \`\`\`
 
 - \`tool\`, \`type\` (\`image\` or \`video\`) and \`model\` are required, spelled exactly as in Tools below.
-- \`mode\` (video only): \`frames\` takes an optional \`start_frame\` and \`end_frame\` (with neither, the video comes from the prompt alone); \`ingredients\` takes one or more \`ingredient\` images.
+- \`mode\`: one of the modes Tools lists for the tool and type, when it lists any. The mode decides which input roles the version can attach: for example \`frames\` takes a \`start_frame\` and an \`end_frame\`, \`references\` takes \`reference\` files, \`extend\` takes a \`video\`.
 - \`aspect_ratio\`, \`duration\`, \`resolution\`: set each one Tools lists for the chosen model; leave out the rest. How many results to generate is the human's choice; do not set it.
-- \`inputs\`: files the human attaches. Each has a \`role\` (\`start_frame\`, \`end_frame\`, \`ingredient\` for video; \`reference\` for images) and either \`slot: <name>\`, meaning that slot's approved result or else its newest chosen one, or \`path: <file>\`.
+- \`inputs\`: files the human attaches. Each has a \`role\` from the ones its mode takes (see Tools; \`reference\` for an image model) and either \`slot: <name>\`, meaning that slot's approved result or else its newest chosen one, or \`path: <file>\`.
 - \`changes\`: from v2 on, one short sentence, around 20 words, on what changed and why. Longer reasoning goes in your review.
 - \`params\`: optional map for any other setting the tool has.
 
@@ -184,6 +204,12 @@ The sky stays at blue hour and the camera is still, so the headline area stays c
 Your approval is a recommendation: the human confirms it, comments, or approves something else. When you answer a comment, rewrite \`vN.review.md\`.
 
 ## Tools
+
+Each slot names its own tool in \`tool:\`, so one project can use several. ${
+  presets.length > 1
+    ? `Installed: ${presets.map((p) => `\`${p.tool}\``).join(", ")}. Before the first request, ask the human which of them they use, and stay with those unless a slot needs something only another tool offers. `
+    : ""
+}Every tool is used by hand in its own interface, so the settings below are what the human selects there; anything else goes in \`params\`. Tools change weekly: where the human's interface differs from a preset, the interface is right.
 
 ${presets.map(presetText).join("\n\n") || "No tool presets are installed. Ask the human which tool and settings to use."}
 `;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Result, ResolvedInput, Slot, Version } from "../shared/types";
+import type { Preset, ResolvedInput, Result, Slot, Version } from "../shared/types";
 import { copiedKey, markPromptCopied, useCopied } from "./copied";
 import { type LightboxItem, useApp } from "./context";
 import { useDismiss } from "./hooks";
@@ -224,7 +224,24 @@ function RatioIcon({ ratio }: { ratio: string }) {
   );
 }
 
+/** The generator a version is made in: its logo on a white plate, so the mark reads on every ground, and its name. */
+export function ToolMark({ tool, presets }: { tool: string; presets: Preset[] }) {
+  const preset = presets.find((p) => p.tool === tool);
+  const name = preset?.name ?? tool;
+  return (
+    <span className={`tool-mark${preset?.logo ? "" : " is-plain"}`} title={preset ? `Generate this in ${name}` : `Tool "${tool}" has no preset`}>
+      {preset?.logo && (
+        <span className="tool-logo">
+          <img src={preset.logo} alt="" width={16} height={16} />
+        </span>
+      )}
+      {name}
+    </span>
+  );
+}
+
 function Settings({ version }: { version: Version }) {
+  const { presets } = useApp();
   const m = version.meta;
   const kind = m.type === "image" || m.type === "video" ? m.type : null;
   const rest: [string, string][] = [];
@@ -232,13 +249,17 @@ function Settings({ version }: { version: Version }) {
   if (m.duration) rest.push(["Length", m.duration]);
   if (m.resolution) rest.push(["Resolution", m.resolution]);
   for (const [k, v] of Object.entries(m.params)) rest.push([k, `${k}: ${v}`]);
-  if (!m.type && !m.aspect_ratio && !m.model && rest.length === 0) return null;
+  if (!m.tool && !m.type && !m.aspect_ratio && !m.model && rest.length === 0) return null;
   // Information, not controls: a quiet row of facts with no boxes, so it never reads as buttons.
   // In the order they are set in the generator: image or video, aspect ratio, model, then the rest.
   return (
     <div className="specs">
-      <span className="specs-label">Settings:</span>
       <ul className="spec-list">
+        {m.tool && (
+          <li className="spec spec-tool">
+            <ToolMark tool={m.tool} presets={presets} />
+          </li>
+        )}
         {m.type && (
           <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`} title="Image or video">
             {kind && <KindIcon kind={kind} />}

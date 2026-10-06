@@ -379,11 +379,13 @@ function VersionFields({ value, onChange, presets, showChanges }: { value: NewVe
   const section = value.type === "video" ? preset?.video : preset?.image;
   const model = section?.models.find((m) => m.name === value.model);
   const isVideo = value.type === "video";
+  // The modes the tool has for this type, narrowed to the model's own once a model is chosen.
+  const modes = section?.modes ? (model?.modes ?? Object.keys(section.modes)) : isVideo && !preset ? ["frames", "references"] : undefined;
   return (
     <>
       <div className="field-row">
         <Field label="Tool">
-          <Choice value={value.tool ?? ""} options={presets.map((p) => p.tool)} onChange={(tool) => set({ tool })} />
+          <Choice value={value.tool ?? ""} options={presets.map((p) => p.tool)} onChange={(tool) => set({ tool, model: "", mode: "", duration: "", resolution: "", aspect_ratio: "" })} />
         </Field>
         <Field label="Type">
           <select value={value.type} onChange={(e) => set({ type: e.target.value, model: "", mode: "", duration: "", resolution: "", aspect_ratio: "" })}>
@@ -396,20 +398,20 @@ function VersionFields({ value, onChange, presets, showChanges }: { value: NewVe
         </Field>
       </div>
       <div className="field-row">
-        {isVideo && (
+        {modes && (
           <Field label="Mode">
-            <Choice value={value.mode ?? ""} options={model?.modes ?? ["frames", "ingredients"]} onChange={(mode) => set({ mode })} />
+            <Choice value={value.mode ?? ""} options={modes} onChange={(mode) => set({ mode })} />
           </Field>
         )}
         <Field label="Aspect ratio">
-          <Choice value={value.aspect_ratio ?? ""} options={section?.aspect_ratios} onChange={(aspect_ratio) => set({ aspect_ratio })} />
+          <Choice value={value.aspect_ratio ?? ""} options={model?.aspect_ratios ?? section?.aspect_ratios} onChange={(aspect_ratio) => set({ aspect_ratio })} />
         </Field>
         {isVideo && (
           <Field label="Length">
-            <Choice value={value.duration ?? ""} options={model?.durations} onChange={(duration) => set({ duration })} />
+            <Choice value={value.duration ?? ""} options={model?.durations?.filter((d) => !d.includes("-"))} onChange={(duration) => set({ duration })} />
           </Field>
         )}
-        {isVideo && model?.resolutions && (
+        {model?.resolutions && (
           <Field label="Resolution">
             <Choice value={value.resolution ?? ""} options={model.resolutions} onChange={(resolution) => set({ resolution })} />
           </Field>
@@ -427,12 +429,23 @@ function VersionFields({ value, onChange, presets, showChanges }: { value: NewVe
   );
 }
 
-const blank = (presets: Preset[]): NewVersionInput => ({ tool: presets[0]?.tool ?? "", type: "image", model: "", prompt: "" });
+const blank = (presets: Preset[], tool?: string): NewVersionInput => ({ tool: tool ?? presets[0]?.tool ?? "", type: "image", model: "", prompt: "" });
 
-export function NewSlotDialog({ presets, onCreate, onClose }: { presets: Preset[]; onCreate: (name: string, description: string, version: NewVersionInput) => void; onClose: () => void }) {
+export function NewSlotDialog({
+  presets,
+  defaultTool,
+  onCreate,
+  onClose,
+}: {
+  presets: Preset[];
+  /** The tool the project's newest slot uses, so a new one starts with it. */
+  defaultTool?: string;
+  onCreate: (name: string, description: string, version: NewVersionInput) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [version, setVersion] = useState(() => blank(presets));
+  const [version, setVersion] = useState(() => blank(presets, defaultTool));
   return (
     <Modal title="New slot" onClose={onClose} wide>
       <form

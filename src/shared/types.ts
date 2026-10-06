@@ -119,21 +119,43 @@ export interface ProjectSummary {
 
 export interface PresetModel {
   name: string;
+  /** Keys of the section's `modes`. */
   modes?: string[];
+  /** Exact values such as "8s", or a range such as "4-30s" meaning any whole second in it. */
   durations?: string[];
   resolutions?: string[];
+  /** Overrides the section's list for this model. */
+  aspect_ratios?: string[];
+  /** The most input files one generation takes: references for images, all inputs of a video. */
   max_inputs?: number;
+  /** One line for the agent: sound, cost, what the model is good at. */
+  about?: string;
+}
+
+/** A way of generating that decides which input files a version can attach. */
+export interface PresetMode {
+  /** The input roles this mode takes; an input with another role is flagged. */
+  roles: string[];
+  /** A role at least one input must have, e.g. `video` for extend. */
+  needs?: string;
+  /** What the tool calls it and when to use it. */
+  about?: string;
 }
 
 export interface PresetSection {
   models: PresetModel[];
   aspect_ratios?: string[];
+  modes?: Record<string, PresetMode>;
 }
 
 export interface Preset {
   tool: string;
   name: string;
   prompt_limit: number | null;
+  /** The date the settings were last checked against the tool, as written in the preset file. */
+  checked: string | null;
+  /** URL of the tool's logo, when a picture sits next to the preset file. */
+  logo: string | null;
   image?: PresetSection;
   video?: PresetSection;
   notes: string;
