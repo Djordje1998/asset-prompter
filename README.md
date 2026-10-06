@@ -62,15 +62,15 @@ The **Tutorial** button in the app walks through the whole loop with pictures of
 
 **Any generator** you can paste a prompt into and get a file out of. A preset tells the agent what a tool offers, so its requests fit the settings you can actually select, and the app warns you when a result does not match. Seven presets ship, checked in October 2026:
 
-| | Generator | Images | Video | Notes for the agent |
-| --- | --- | :---: | :---: | --- |
-| <img src="docs/logos/midjourney.png" width="28" alt=""> | **Midjourney** | V8.2, V8.1, V7, Niji 7 | V1, 5 s + extend to 21 s | Parameters go in the prompt (`--ar`, `--hd`, `--sref`); silent video |
-| <img src="docs/logos/google-flow.png" width="28" alt=""> | **Google Flow** | Nano Banana Pro / 2 / 2 Lite | Veo 3.1, Gemini Omni, 4–10 s | Frames, ingredients, extend; native sound |
-| <img src="docs/logos/dreamina.png" width="28" alt=""> | **Dreamina** | Seedream 5.0, GPT Image 2, Nano Banana | Seedance 2.5, 4–30 s | Up to 50 references, timestamps in the prompt, native sound |
-| <img src="docs/logos/grok-imagine.png" width="28" alt=""> | **Grok Imagine** | Image 2.0 | Imagine 1.5, up to 15 s, 1080p | Text, image and reference to video; native sound |
-| <img src="docs/logos/leonardo.png" width="28" alt=""> | **Leonardo.Ai** | Lucid, Phoenix, GPT Image, Nano Banana, Seedream, FLUX | Veo 3.1, Kling 3.0, Seedance, Hailuo, Motion 2.0 … | Many models, each with its own price on Generate |
-| <img src="docs/logos/luma.svg" width="28" alt=""> | **Luma Dream Machine** | Uni-1.1, Photon | Ray3.2, 5 or 10 s, up to 1080p | 16 keyframes, HDR and EXR export; silent |
-| <img src="docs/logos/chatgpt.svg" width="28" alt=""> | **ChatGPT Images** | Images 2.5 | — | Best at text in pictures and precise edits |
+| Generator | Images | Video | Notes for the agent |
+| --- | :---: | :---: | --- |
+| <img src="docs/logos/midjourney.png" width="32" align="top" alt="">&nbsp; **Midjourney** | V8.2, V8.1, V7, Niji 7 | V1, 5 s + extend to 21 s | Parameters go in the prompt (`--ar`, `--hd`, `--sref`); silent video |
+| <img src="docs/logos/google-flow.png" width="32" align="top" alt="">&nbsp; **Google Flow** | Nano Banana Pro / 2 / 2 Lite | Veo 3.1, Gemini Omni, 4–10 s | Frames, ingredients, extend; native sound |
+| <img src="docs/logos/dreamina.png" width="32" align="top" alt="">&nbsp; **Dreamina** | Seedream 5.0, GPT Image 2, Nano Banana | Seedance 2.5, 4–30 s | Up to 50 references, timestamps in the prompt, native sound |
+| <img src="docs/logos/grok-imagine.png" width="32" align="top" alt="">&nbsp; **Grok Imagine** | Image 2.0 | Imagine 1.5, up to 15 s, 1080p | Text, image and reference to video; native sound |
+| <img src="docs/logos/leonardo.png" width="32" align="top" alt="">&nbsp; **Leonardo.Ai** | Lucid, Phoenix, GPT Image, Nano Banana, Seedream, FLUX | Veo 3.1, Kling 3.0, Seedance, Hailuo, Motion 2.0 … | Many models, each with its own price on Generate |
+| <img src="docs/logos/luma.svg" width="32" align="top" alt="">&nbsp; **Luma Dream Machine** | Uni-1.1, Photon | Ray3.2, 5 or 10 s, up to 1080p | 16 keyframes, HDR and EXR export; silent |
+| <img src="docs/logos/chatgpt.svg" width="32" align="top" alt="">&nbsp; **ChatGPT Images** | Images 2.5 | — | Best at text in pictures and precise edits |
 
 Each slot names its own tool, so one project can mix them: a Midjourney still as the start frame of a Flow clip, for instance. Another tool needs only a short preset file, see [Presets](#presets).
 
