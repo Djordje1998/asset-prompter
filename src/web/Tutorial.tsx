@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import doneArt from "./art/empty-done.png";
-import { useEscape } from "./hooks";
+import { useDialogFocus, useEscape } from "./hooks";
 import { t } from "./i18n";
 import whyAnyGenerator from "./tutorial/idea-any-generator.webp";
 import whyCostsLess from "./tutorial/idea-costs-less.webp";
@@ -13,15 +13,24 @@ import { Icon, type IconName, Logo } from "./icons";
 import { STATUS_LABEL } from "./lib";
 import { STATUS_ICON } from "./shared";
 import shotAgent from "./tutorial/agent.webp";
+import shotAgentLight from "./tutorial/agent-light.webp";
 import shotChanges from "./tutorial/changes.webp";
+import shotChangesLight from "./tutorial/changes-light.webp";
 import shotDone from "./tutorial/done.webp";
+import shotDoneLight from "./tutorial/done-light.webp";
 import shotFeed from "./tutorial/feed.webp";
+import shotFeedLight from "./tutorial/feed-light.webp";
 import shotGenerate from "./tutorial/generate.webp";
+import shotGenerateLight from "./tutorial/generate-light.webp";
 import shotLightbox from "./tutorial/lightbox.webp";
+import shotLightboxLight from "./tutorial/lightbox-light.webp";
 import { MARKS, type Mark } from "./tutorial/marks";
 import shotNotify from "./tutorial/notify.webp";
+import shotNotifyLight from "./tutorial/notify-light.webp";
 import shotProjects from "./tutorial/projects.webp";
+import shotProjectsLight from "./tutorial/projects-light.webp";
 import shotReview from "./tutorial/review.webp";
+import shotReviewLight from "./tutorial/review-light.webp";
 
 /**
  * The guided tour: a dialog that walks through the app in steps, each with a picture of the real screen.
@@ -35,7 +44,8 @@ interface Step {
   body: string;
   /** With a screenshot, point N explains mark N. */
   points: string[];
-  shot?: { src: string; marks: readonly Mark[] };
+  /** The screen in the dark theme and in the light one: the same moment, so the marks fit both. */
+  shot?: { src: string; light: string; marks: readonly Mark[] };
   art?: "why" | "loop" | "extras";
 }
 
@@ -74,9 +84,9 @@ const STEPS: Step[] = [
     points: [
       t("The project you are in. Click it to switch to another one."),
       t("The number counts the slots that wait for you in that project."),
-      t("Add a project: make a new one, or point at a folder inside the repo your agent works in."),
+      t("Create project: a new folder in the projects folder."),
     ],
-    shot: { src: shotProjects, marks: MARKS.projects },
+    shot: { src: shotProjects, light: shotProjectsLight, marks: MARKS.projects },
   },
   {
     id: "agent",
@@ -85,10 +95,10 @@ const STEPS: Step[] = [
     body: t("A new project starts empty. One message is all your agent needs to learn how the folder works."),
     points: [
       t("Press Copy agent instructions and paste it into a new chat with your agent. It starts writing prompts into the project."),
-      t("The same button is always in the top bar. View shows what gets copied."),
+      t("The same button is always in the top bar. Read shows what gets copied."),
       t("No agent at hand? New slot lets you write a prompt yourself."),
     ],
-    shot: { src: shotAgent, marks: MARKS.agent },
+    shot: { src: shotAgent, light: shotAgentLight, marks: MARKS.agent },
   },
   {
     id: "feed",
@@ -101,7 +111,7 @@ const STEPS: Step[] = [
       t("The tag on a card shows the step the slot is at now, and whose turn it is."),
       t("Write a new version yourself, clone the slot, or delete it. Deleted slots go to _trash."),
     ],
-    shot: { src: shotFeed, marks: MARKS.feed },
+    shot: { src: shotFeed, light: shotFeedLight, marks: MARKS.feed },
   },
   {
     id: "generate",
@@ -114,7 +124,7 @@ const STEPS: Step[] = [
       t("Add the reference images the card lists to the tool: press Copy image and paste it there, or drag the picture onto the tool's upload area."),
       t("Drop the result here or choose the file. Images can also be pasted with Ctrl+V. Several results are fine."),
     ],
-    shot: { src: shotGenerate, marks: MARKS.generate },
+    shot: { src: shotGenerate, light: shotGenerateLight, marks: MARKS.generate },
   },
   {
     id: "notify",
@@ -126,7 +136,7 @@ const STEPS: Step[] = [
       t("The slot now says {status:waiting_agent}."),
       t("Press {button:Notify agent} when your batch is in. It also tells the agent what you approved. A green dot means the agent is listening, and {button:Stop} beside it ends that; if it is not listening, tell it \"done\" in the chat."),
     ],
-    shot: { src: shotNotify, marks: MARKS.notify },
+    shot: { src: shotNotify, light: shotNotifyLight, marks: MARKS.notify },
   },
   {
     id: "review",
@@ -138,7 +148,7 @@ const STEPS: Step[] = [
       t("With several results the agent picks one (purple check). Click another thumbnail to pick it yourself (green). Click your pick again to take it back."),
       t("Approve makes this version final and moves the slot to Done. From then on the agent leaves it alone."),
     ],
-    shot: { src: shotReview, marks: MARKS.review },
+    shot: { src: shotReview, light: shotReviewLight, marks: MARKS.review },
   },
   {
     id: "changes",
@@ -149,7 +159,7 @@ const STEPS: Step[] = [
       t("{button:Request changes} opens a note for the agent. It saves when you click away. Then press {button:Notify agent}: the agent writes v2, and the slot comes back to you as {status:waiting_generation}."),
       t("Earlier versions stay folded under the card, with what you asked for."),
     ],
-    shot: { src: shotChanges, marks: MARKS.changes },
+    shot: { src: shotChanges, light: shotChangesLight, marks: MARKS.changes },
   },
   {
     id: "lightbox",
@@ -161,7 +171,7 @@ const STEPS: Step[] = [
       t("Select makes the result on screen your pick."),
       t("Copy image puts it on the clipboard, ready to paste as a reference."),
     ],
-    shot: { src: shotLightbox, marks: MARKS.lightbox },
+    shot: { src: shotLightbox, light: shotLightboxLight, marks: MARKS.lightbox },
   },
   {
     id: "done",
@@ -174,7 +184,7 @@ const STEPS: Step[] = [
       t("Copy the image with one click."),
       t("Details shows the whole history. Remove the approval there to reopen the slot, or clone it to try another direction."),
     ],
-    shot: { src: shotDone, marks: MARKS.done },
+    shot: { src: shotDone, light: shotDoneLight, marks: MARKS.done },
   },
   {
     id: "extras",
@@ -184,6 +194,7 @@ const STEPS: Step[] = [
     points: [
       t("The browser tab shows how many slots are still open, so the app can wait in the background."),
       t("To change an approved asset, remove its approval in Details, or clone the slot and keep the original."),
+      t("The sun and moon switch in the top bar turns the page light or dark; the app remembers your choice."),
       t("Open this tour again any time with the Tutorial button in the top bar."),
     ],
     art: "extras",
@@ -319,7 +330,10 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
   const step = STEPS[index]!;
   const last = index === STEPS.length - 1;
   const direction = from !== null && from > index ? "back" : "next";
-  const ghost = from !== null ? STEPS[from]!.shot?.src : undefined;
+  // The pictures match the page's theme; the switch sits under the tour, so it cannot change while it is open.
+  const light = document.documentElement.dataset.theme === "light";
+  const picture = (s: Step) => (s.shot ? (light ? s.shot.light : s.shot.src) : undefined);
+  const ghost = from !== null ? picture(STEPS[from]!) : undefined;
 
   const go = (to: number) => {
     if (to < 0 || to >= STEPS.length || to === index) return;
@@ -329,8 +343,11 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
   };
 
   useEscape(onClose);
+  const box = useRef<HTMLDivElement>(null);
+  useDialogFocus(box);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "ArrowRight") go(index + 1);
       if (e.key === "ArrowLeft") go(index - 1);
     };
@@ -339,12 +356,12 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
   });
   // Every picture is fetched up front, so a step never opens on an empty frame.
   useEffect(() => {
-    for (const s of STEPS) if (s.shot) new Image().src = s.shot.src;
+    for (const s of STEPS) if (s.shot) new Image().src = picture(s)!;
   }, []);
 
   return (
     <div className="overlay tour-overlay">
-      <div className="tour" role="dialog" aria-modal="true" aria-label={t("Tutorial, step {n} of {total}: {title}", { n: index + 1, total: STEPS.length, title: step.title })}>
+      <div ref={box} tabIndex={-1} className="tour" role="dialog" aria-modal="true" aria-label={t("Tutorial, step {n} of {total}: {title}", { n: index + 1, total: STEPS.length, title: step.title })}>
         <header className="tour-head">
           <span className="tour-brand">
             <Logo size={20} />
@@ -362,7 +379,7 @@ export function Tutorial({ onClose }: { onClose: () => void }) {
           <div className={`tour-frame${step.shot ? "" : " is-art"}`}>
             {ghost && <img key={`ghost-${from}`} className="tour-ghost" src={ghost} alt="" />}
             <div key={step.id} className={`tour-scene is-${direction}${active !== null ? " has-active" : ""}`}>
-              {step.shot && <img className="tour-shot" src={step.shot.src} alt={t("The app during the step \"{title}\"", { title: step.title })} />}
+              {step.shot && <img className="tour-shot" src={picture(step)} alt={t("The app during the step \"{title}\"", { title: step.title })} />}
               {step.shot?.marks.map((m, i) => (
                 <span
                   key={i}

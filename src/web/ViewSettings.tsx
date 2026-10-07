@@ -65,7 +65,7 @@ export function ViewSettings({ tab, view }: { tab: Tab; view: View }) {
   const { width, perRow, compact } = view;
   return (
     <div className="view" ref={ref}>
-      <button className={`view-button${open ? " is-on" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open} title={t("View settings")}>
+      <button className={`view-button${open ? " is-on" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open}>
         <Icon name="sliders" />
         {t("View")}
       </button>

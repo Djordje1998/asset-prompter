@@ -1,6 +1,8 @@
 node_modules/
 projects/
 config.json
+media-cache.json
+thumbs/
 *.log
 .starting
 briefings.json

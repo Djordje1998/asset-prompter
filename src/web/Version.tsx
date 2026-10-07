@@ -6,7 +6,7 @@ import { useDismiss } from "./hooks";
 import { LOCALE, lang, t } from "./i18n";
 import { Icon } from "./icons";
 import { ROLE_LABEL, call, clipboardFiles, copyImage, copyText, dragOut, enc, slotUrl, versionUrl } from "./lib";
-import { CopyImageButton, KindIcon, Media, RatioIcon, describe } from "./shared";
+import { CopyImageButton, Fold, KindIcon, Media, RatioIcon, describe } from "./shared";
 
 const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files");
 
@@ -30,7 +30,7 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
   const picker = useRef<HTMLInputElement>(null);
   const { results } = version;
   const shown = results.find((c) => c.file === version.selected) ?? results[0];
-  const base = versionUrl(ctx.project.id, slot.name, version.n);
+  const base = versionUrl(ctx.projectId, slot.name, version.n);
   const needsPick = results.length > 1 && !version.selected;
   const wanted: "image" | "video" = version.meta.type === "video" ? "video" : "image";
   // Its inputs are not approved yet, so generating now would build on a draft.
@@ -57,7 +57,8 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
         e.preventDefault();
         setOver(true);
       }}
-      onDragLeave={() => setOver(false)}
+      // Moving onto a child of the box is a leave too; only leaving the box itself ends the highlight.
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(false)}
       onDrop={(e) => {
         if (!hasFiles(e)) return;
         e.preventDefault();
@@ -112,7 +113,7 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
                         ctx.act(() => call("PUT", `${base}/selected`, { file: unpick ? null : c.file }));
                       }}
                     >
-                      <Media item={c} />
+                      <Media item={c} thumb />
                     </button>
                     <span className="thumb-name">{c.file}</span>
                     {c.file === version.selected && (
@@ -126,7 +127,7 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
             </div>
           )}
           <div className="mediabox-bar">
-            <span className="mediabox-info" title={shown.file}>
+            <span className="mediabox-info">
               {describe(shown, true)}
             </span>
             <div className="mediabox-tools">
@@ -140,7 +141,7 @@ function MediaBox({ slot, version }: { slot: Slot; version: Version }) {
                   {t("Drag out")}
                 </span>
               )}
-              <button className="link" onClick={() => ctx.act(() => copyText(shown.path), t("Path copied"))}>
+              <button className="link" onClick={() => ctx.act(() => copyText(shown.path), { message: t("Path copied"), detail: shown.path })}>
                 {t("Copy path")}
               </button>
               <button className="link" onClick={() => picker.current?.click()}>
@@ -253,7 +254,7 @@ function Settings({ version }: { version: Version }) {
           </li>
         )}
         {m.type && (
-          <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`} title={t("Image or video")}>
+          <li className={`spec spec-kind${kind ? ` is-${kind}` : ""}`}>
             {kind && <KindIcon kind={kind} />}
             {kind === "video" ? t("Video") : kind === "image" ? t("Image") : m.type}
           </li>
@@ -347,7 +348,7 @@ const FRAME_ORDER = ["start_frame", "keyframe", "end_frame"];
 /** The viewer's item for an input, or null when there is nothing to show yet. */
 function inputItem(input: ResolvedInput): LightboxItem | null {
   if (!input.url || !input.kind) return null;
-  const name = input.source.split(/[\/]/).pop() ?? input.source;
+  const name = input.source.split(/[\\/]/).pop() ?? input.source;
   const label = input.role ? t(ROLE_LABEL[input.role] ?? input.role) : t("Input");
   return { url: input.url, kind: input.kind, title: input.fromSlot ? input.source : name, version: input.sourceVersion ?? undefined, tags: [label], file: input.fromSlot ? undefined : input.source };
 }
@@ -368,22 +369,22 @@ function Inputs({ inputs }: { inputs: ResolvedInput[] }) {
       {frames.length > 0 && (
         <div className="frames">
           <span className="input-group-label">{t("Frames")}</span>
-          <div className="clip">
+          <ul className="clip">
             {frames.map((input, i) => (
               <Fragment key={i}>
-                {i > 0 && <span className="clip-track" aria-hidden="true" />}
+                {i > 0 && <li className="clip-track" aria-hidden="true" />}
                 <InputTile input={input} open={open} />
               </Fragment>
             ))}
             {/* The clip runs on from the last frame when no end frame is set. */}
-            {!hasEnd && <span className="clip-track is-open" aria-hidden="true" />}
-          </div>
+            {!hasEnd && <li className="clip-track is-open" aria-hidden="true" />}
+          </ul>
         </div>
       )}
       {references.length > 0 && (
         <div className="references">
           <span className="input-group-label">{references.length === 1 ? t("Reference") : t("References ({n})", { n: references.length })}</span>
-          <ul className="inputs is-compact">
+          <ul className="inputs">
             {references.map((input, i) => (
               <InputTile key={i} input={input} open={open} />
             ))}
@@ -394,10 +395,24 @@ function Inputs({ inputs }: { inputs: ResolvedInput[] }) {
   );
 }
 
+/**
+ * One input: its picture, a title and a line under it, and the two copy actions as icons at the end, so every
+ * tile has the same shape whatever its text. A frame is titled by its role; a reference by its file, since the
+ * group's title already says what it is.
+ */
 function InputTile({ input, open }: { input: ResolvedInput; open: (input: ResolvedInput) => { items: LightboxItem[]; index: number } | null }) {
   const ctx = useApp();
   const label = input.role ? t(ROLE_LABEL[input.role] ?? input.role) : t("Input");
   const name = input.source.split(/[\\/]/).pop() ?? input.source;
+  const isReference = !input.role || input.role === "reference";
+  const from = input.fromSlot
+    ? input.sourceVersion
+      ? t("from {source} v{n}", { source: input.source, n: input.sourceVersion })
+      : t("from {source}", { source: input.source })
+    : null;
+  const title = isReference ? (from ?? name) : label;
+  const detail = isReference ? (from ? null : input.kind === "video" ? t("Video") : input.kind === "image" ? t("Image") : null) : (from ?? name);
+  const warning = input.missing ? t(input.missing) : input.fromSlot && !input.sourceApproved ? t("Not approved yet") : null;
   return (
     <li className={`input${input.role ? ` is-${input.role}` : ""}`}>
       {input.url && input.kind ? (
@@ -411,36 +426,28 @@ function InputTile({ input, open }: { input: ResolvedInput; open: (input: Resolv
           draggable
           onDragStart={(e) => dragOut(e, input.url!, name)}
         >
-          <Media item={{ url: input.url, kind: input.kind }} />
+          <Media item={{ url: input.url, kind: input.kind }} thumb />
         </button>
       ) : (
         <div className="input-thumb is-missing">?</div>
       )}
-      <div className="input-body">
-        <div className="input-role">{label}</div>
-        <div className="input-source" title={input.path ?? input.source}>
-          {input.fromSlot
-            ? input.sourceVersion
-              ? t("from {source} v{n}", { source: input.source, n: input.sourceVersion })
-              : t("from {source}", { source: input.source })
-            : name}
-        </div>
-        {input.fromSlot && !input.missing && !input.sourceApproved && <div className="input-unapproved">{t("Not approved yet")}</div>}
-        {input.missing ? (
-          <div className="input-missing">{input.missing}</div>
-        ) : (
-          <div className="input-actions">
-            {input.kind === "image" && (
-              <button className="link" onClick={() => ctx.act(() => copyImage(input.url!), t("Image copied"))}>
-                {t("Copy image")}
-              </button>
-            )}
-            <button className="link" onClick={() => ctx.act(() => copyText(input.path!), t("Path copied"))}>
-              {t("Copy path")}
-            </button>
-          </div>
-        )}
+      <div className="input-body" title={input.path ?? input.source}>
+        <div className="input-title">{title}</div>
+        {detail && <div className="input-detail">{detail}</div>}
+        {warning && <div className="input-detail input-warning">{warning}</div>}
       </div>
+      {!input.missing && input.path && (
+        <div className="input-actions">
+          {input.kind === "image" && (
+            <button className="input-action" onClick={() => ctx.act(() => copyImage(input.url!), { message: t("Image copied"), detail: name })} title={t("Copy image")} aria-label={t("Copy image")}>
+              <Icon name="copyimage" size={14} />
+            </button>
+          )}
+          <button className="input-action" onClick={() => ctx.act(() => copyText(input.path!), { message: t("Path copied"), detail: input.path! })} title={t("Copy path")} aria-label={t("Copy path")}>
+            <Icon name="copy" size={14} />
+          </button>
+        </div>
+      )}
     </li>
   );
 }
@@ -470,7 +477,7 @@ function ChangeRequest({ slot, version, autoFocus, onClose }: { slot: Slot; vers
     setState("saving");
     let ok = false;
     await ctx.act(async () => {
-      await call("PUT", `${versionUrl(ctx.project.id, slot.name, version.n)}/change-request`, { text });
+      await call("PUT", `${versionUrl(ctx.projectId, slot.name, version.n)}/change-request`, { text });
       ok = true;
     }, text.trim() ? t("Change request sent to the agent") : t("Change request removed"));
     if (ok) setState("saved");
@@ -491,8 +498,8 @@ function ChangeRequest({ slot, version, autoFocus, onClose }: { slot: Slot; vers
   return (
     <div className="feedback-wrap">
       {/* Clicking it blurs the field first, which saves any unsaved text. */}
-      <button className="feedback-close" onClick={onClose} title={t("Hide")} aria-label={t("Hide the change request")}>
-        <Icon name="x" size={10} />
+      <button className="feedback-close" onClick={onClose} title={t("Collapse")} aria-label={t("Hide the change request")}>
+        <Icon name="chevron" size={12} className="chevron is-up" />
       </button>
       <textarea
         className="feedback"
@@ -524,7 +531,7 @@ function ChangeRequest({ slot, version, autoFocus, onClose }: { slot: Slot; vers
 
 function CopyPrompt({ slot, version }: { slot: Slot; version: Version }) {
   const ctx = useApp();
-  const key = copiedKey(ctx.project.id, slot.name, version.n);
+  const key = copiedKey(ctx.projectId, slot.name, version.n);
   const copied = useCopied(key, version.prompt);
   return (
     <button
@@ -533,10 +540,10 @@ function CopyPrompt({ slot, version }: { slot: Slot; version: Version }) {
         ctx.act(async () => {
           await copyText(version.prompt);
           markPromptCopied(key, version.prompt);
-        }, t("Prompt copied"))
+        }, { message: t("Prompt copied"), detail: version.prompt })
       }
       disabled={!version.prompt}
-      title={copied ? t("Already copied once; click to copy again") : t("Copy the prompt for the generator")}
+      title={copied ? t("Already copied once; click to copy again") : undefined}
     >
       <Icon name={copied ? "check" : "clipboard"} />
       {copied ? t("Copied") : t("Copy prompt")}
@@ -547,16 +554,37 @@ function CopyPrompt({ slot, version }: { slot: Slot; version: Version }) {
 export function VersionBody({ slot, version }: { slot: Slot; version: Version }) {
   const ctx = useApp();
   const isApproved = slot.approved === version.n;
-  const approval = `${slotUrl(ctx.project.id, slot.name)}/approval`;
+  const approval = `${slotUrl(ctx.projectId, slot.name)}/approval`;
   const hasMedia = version.results.length > 0;
   // Comments are rare: the field stays hidden until asked for, unless one is already written.
   const [commenting, setCommenting] = useState(false);
   const [showComment, setShowComment] = useState(version.changeRequest !== null);
+  // The paste follows what is under the pointer even when that changes without the pointer moving: a new version
+  // shown in this place takes it over, and a card that goes (approved, deleted) gets no mouseleave, so it lets go
+  // of the paste itself; otherwise a later paste anywhere would land in a version no longer on screen.
+  const pointed = useRef(false);
+  const setTarget = useRef(ctx.setPasteTarget);
+  setTarget.current = ctx.setPasteTarget;
+  useEffect(() => {
+    if (pointed.current) setTarget.current({ slot: slot.name, n: version.n });
+  }, [slot.name, version.n]);
+  useEffect(
+    () => () => {
+      if (pointed.current) setTarget.current(null);
+    },
+    [],
+  );
   return (
     <div
       className="version-body"
-      onMouseEnter={() => ctx.setPasteTarget({ slot: slot.name, n: version.n })}
-      onMouseLeave={() => ctx.setPasteTarget(null)}
+      onMouseEnter={() => {
+        pointed.current = true;
+        ctx.setPasteTarget({ slot: slot.name, n: version.n });
+      }}
+      onMouseLeave={() => {
+        pointed.current = false;
+        ctx.setPasteTarget(null);
+      }}
     >
       <MediaBox slot={slot} version={version} />
       <div className="version-info">
@@ -580,21 +608,28 @@ export function VersionBody({ slot, version }: { slot: Slot; version: Version })
             <span>{t("Changed in v{n}", { n: version.n })}</span> {version.meta.changes}
           </p>
         )}
-        <div className="prompt">
-          <Settings version={version} />
-          <p className="prompt-text">{version.prompt || version.raw}</p>
-          <div className="prompt-bar">
-            <CopyPrompt slot={slot} version={version} />
-            <span className="prompt-count">{t("{n} characters", { n: version.prompt.length.toLocaleString(LOCALE[lang]) })}</span>
-            <button className="link prompt-more" onClick={() => ctx.openPrompt(slot, version)}>
-              {t("Show all")}
-            </button>
+        {version.meta.source === "file" ? (
+          <p className="ready-made">
+            <Icon name="check" size={12} />
+            {t("Added as a finished file, not generated from a prompt.")}
+          </p>
+        ) : (
+          <div className="prompt">
+            <Settings version={version} />
+            <p className="prompt-text">{version.prompt || version.raw}</p>
+            <div className="prompt-bar">
+              <CopyPrompt slot={slot} version={version} />
+              <span className="prompt-count">{t("{n} characters", { n: version.prompt.length.toLocaleString(LOCALE[lang]) })}</span>
+              <button className="link prompt-more" onClick={() => ctx.openPrompt(slot, version)}>
+                {t("Show all")}
+              </button>
+            </div>
           </div>
-        </div>
-        {version.inputs.length > 0 && <Inputs inputs={version.inputs} />}
-        {hasMedia && showComment && (
-          <ChangeRequest slot={slot} version={version} autoFocus={commenting} onClose={() => setShowComment(false)} />
         )}
+        {version.inputs.length > 0 && <Inputs inputs={version.inputs} />}
+        <Fold open={hasMedia && showComment}>
+          <ChangeRequest slot={slot} version={version} autoFocus={commenting} onClose={() => setShowComment(false)} />
+        </Fold>
         {hasMedia && (
           <div className="version-actions">
             {isApproved ? (

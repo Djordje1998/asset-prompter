@@ -57,7 +57,25 @@ const fileSize = (p: string) => {
     return 0;
   }
 };
-const readText = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+/** A folder's entries; none when it is gone, e.g. frame sheets being made again right now. */
+const listDir = (p: string) => {
+  try {
+    return readdirSync(p);
+  } catch {
+    return [];
+  }
+};
+/**
+ * A file's text, or null. Agents write while the app reads, so a file listed a moment ago may be gone, and a
+ * folder may carry a file's name; either must not fail the whole scan, and with it every project's state.
+ */
+const readText = (p: string) => {
+  try {
+    return readFileSync(p, "utf8");
+  } catch {
+    return null;
+  }
+};
 const str = (v: unknown): string | null => {
   if (v === undefined || v === null || typeof v === "object") return null;
   const s = String(v).trim();
@@ -79,16 +97,16 @@ export function listSlotNames(root: string): string[] {
 
 export function listVersionNumbers(slotDir: string): number[] {
   if (!existsSync(slotDir)) return [];
-  return readdirSync(slotDir)
-    .map((f) => VERSION_FILE.exec(f))
+  return readdirSync(slotDir, { withFileTypes: true })
+    .filter((d) => !d.isDirectory())
+    .map((d) => VERSION_FILE.exec(d.name))
     .filter((m): m is RegExpExecArray => m !== null)
     .map((m) => Number(m[1]))
     .sort((a, b) => a - b);
 }
 
 export function listResultFiles(versionDir: string): string[] {
-  if (!existsSync(versionDir)) return [];
-  return readdirSync(versionDir)
+  return listDir(versionDir)
     .filter((f) => mediaKind(f) !== null && !isDir(join(versionDir, f)))
     .sort(byNumber);
 }
@@ -142,6 +160,7 @@ export function readMeta(data: Record<string, unknown>): VersionMeta {
     duration,
     resolution: str(data.resolution),
     changes: str(data.changes),
+    source: str(data.source)?.toLowerCase() ?? null,
     params,
   };
 }
@@ -178,18 +197,20 @@ interface ScannedVersion extends Version {
 function scanVersion(projectId: string, root: string, slotDir: string, n: number, presets: Preset[]): ScannedVersion {
   const path = join(slotDir, `v${n}.md`);
   const dir = join(slotDir, `v${n}`);
-  const raw = readFileSync(path, "utf8");
+  const raw = readText(path) ?? "";
   const doc = parseDoc(raw);
   const errors: string[] = [];
   if (doc.error) errors.push(doc.error);
   const meta = readMeta(doc.data);
   const rawInputs = readInputs(doc.data, errors);
+  // A ready-made file (`source: file`) was never generated from a prompt, so it needs no model and no prompt.
+  const readyMade = meta.source === "file";
   if (!doc.error) {
-    if (!meta.model) errors.push("`model` is missing.");
+    if (!meta.model && !readyMade) errors.push("`model` is missing.");
     if (!meta.type) errors.push("`type` is missing (image or video).");
     else if (meta.type !== "image" && meta.type !== "video") errors.push(`\`type\` must be image or video, not "${meta.type}".`);
   }
-  if (doc.body === "") errors.push("The prompt is empty.");
+  if (doc.body === "" && !readyMade) errors.push("The prompt is empty.");
 
   const warnings: string[] = [];
   if (!doc.error && meta.tool) {
@@ -205,8 +226,8 @@ function scanVersion(projectId: string, root: string, slotDir: string, n: number
     const kind = mediaKind(file)!;
     const framesDir = framesDirOf(abs);
     const frames =
-      kind === "video" && existsSync(framesDir)
-        ? readdirSync(framesDir)
+      kind === "video" && isDir(framesDir)
+        ? listDir(framesDir)
             .filter((f) => SHEET_FILE.test(f))
             .sort(byNumber)
             .map((f) => fileUrl(projectId, root, join(framesDir, f)))
@@ -351,6 +372,16 @@ export function scanProject(projectId: string, root: string, presets: Preset[]):
   const newestFirst = [...slots.values()].sort((a, b) => b.createdAt - a.createdAt || a.name.localeCompare(b.name));
   newestFirst.forEach((slot, i) => (slot.number = newestFirst.length - i));
   return newestFirst;
+}
+
+/** Where each slot stands, as ProjectSummary.stamps: a new version or a new review gives a new stamp. */
+export function slotStamps(slots: Slot[]): Record<string, string> {
+  const stamps: Record<string, string> = {};
+  for (const slot of slots) {
+    const latest = slot.versions.at(-1);
+    stamps[slot.name] = `${slot.status}:${latest?.n ?? 0}:${latest?.review?.at ?? 0}`;
+  }
+  return stamps;
 }
 
 export function countStatuses(slots: Slot[]): Record<Status, number> {

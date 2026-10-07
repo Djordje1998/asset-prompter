@@ -166,6 +166,7 @@ Slow push-in toward the cafe entrance at dusk. Rain on the cobblestones, warm li
 - \`inputs\`: files the human attaches. Each has a \`role\` from the ones its mode takes (see Tools; \`reference\` for an image model) and either \`slot: <name>\`, meaning that slot's approved result or else its newest chosen one, or \`path: <file>\`.
 - \`changes\`: from v2 on, one short sentence, around 20 words, on what changed and why. Longer reasoning goes in your review.
 - \`params\`: optional map for any other setting the tool has.
+- \`source: file\`: the human added the result ready-made, with no prompt or settings; such a version has no \`model\` and an empty prompt. Use its final file like any other approved asset.
 
 The body is plain prompt text, complete on its own. The generator sees only this text and the attached inputs, with no memory of earlier versions or other slots.
 

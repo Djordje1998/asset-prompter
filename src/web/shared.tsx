@@ -3,18 +3,21 @@ import type { Result, Slot } from "../shared/types";
 import { useApp } from "./context";
 import { t } from "./i18n";
 import { Icon, type IconName } from "./icons";
-import { copyImage, copyText, createdLabel, formatBytes } from "./lib";
+import { copyImage, copyText, createdLabel, fileNameOf, formatBytes, thumbUrl } from "./lib";
 
 /** An image or video that shows a shimmering placeholder until its first frame is in. */
 export function Media({
   item,
   className,
   controls,
+  thumb,
   onDragStart,
 }: {
   item: { url: string; kind: "image" | "video" };
   className?: string;
   controls?: boolean;
+  /** Shown small (a tile, a strip): an image comes as its small copy. */
+  thumb?: boolean;
   /** Images only: makes the image draggable out of the page. */
   onDragStart?: (e: React.DragEvent) => void;
 }) {
@@ -41,7 +44,7 @@ export function Media({
     <img
       ref={img}
       className={cls}
-      src={item.url}
+      src={thumb ? thumbUrl(item.url) : item.url}
       alt=""
       loading="lazy"
       draggable={onDragStart ? true : undefined}
@@ -56,7 +59,7 @@ export function Media({
 export function CopyImageButton({ url }: { url: string }) {
   const ctx = useApp();
   return (
-    <button className="tile-copy" onClick={() => ctx.act(() => copyImage(url), t("Image copied"))} title={t("Copy image")} aria-label={t("Copy image")}>
+    <button className="tile-copy" onClick={() => ctx.act(() => copyImage(url), { message: t("Image copied"), detail: fileNameOf(url) })} title={t("Copy image")} aria-label={t("Copy image")}>
       <Icon name="copyimage" size={15} />
     </button>
   );

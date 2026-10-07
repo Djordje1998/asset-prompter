@@ -1,6 +1,6 @@
 ---
 tool: midjourney
-name: Midjourney
+name: Midjourney
 short: Midjourney
 checked: 2026-10-06
 prompt_limit: null

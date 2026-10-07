@@ -49,6 +49,7 @@ export const meta = (fields: Partial<VersionMeta> = {}): VersionMeta => ({
   duration: null,
   resolution: null,
   changes: null,
+  source: null,
   params: {},
   ...fields,
 });

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { cloneName } from "../src/shared/names";
 import { listProjects } from "../src/server/projects";
 import { scanProject } from "../src/server/store";
-import { addResults, addVersion, cloneSlot, createSlot, deleteResult, listTrash, restoreProject, restoreResult, restoreSlot, restoreTrashed, setApproval, setChangeRequest, setSelected, slotName, slugName, trashProject, trashSlot } from "../src/server/actions";
+import { addFinal, addResults, addVersion, deleteTrashed, cloneSlot, createSlot, deleteResult, listTrash, newFolderName, restoreProject, restoreResult, restoreSlot, restoreTrashed, setApproval, setChangeRequest, setSelected, slotName, slugName, trashProject, trashSlot } from "../src/server/actions";
 import { findSlot, image, png, presets, tempProject, writeReview } from "./helpers";
 
 const root = tempProject();
@@ -314,4 +314,66 @@ test("the trash lists removed slots and results, and puts each back where it cam
   expect(existsSync(join(root(), "logo", "v1.md"))).toBe(true);
   expect(existsSync(hero("v1", "2.png"))).toBe(true);
   expect(listTrash(join(root(), "_trash"), false)).toEqual([]);
+});
+
+// ---- a finished asset added by hand ------------------------------------
+
+test("a finished file becomes an approved slot with no prompt, and the agent sees it as ready-made", async () => {
+  await addFinal(root(), "logo", "The brand mark.", png("logo.png", [9, 9, 9]));
+  const slot = findSlot(root(), "logo");
+  expect(slot.status).toBe("approved");
+  expect(slot.approved).toBe(1);
+  expect(slot.description).toBe("The brand mark.");
+  expect([...readFileSync(join(root(), "logo", "final.png"))]).toEqual([9, 9, 9]);
+  const v1 = slot.versions[0]!;
+  expect(v1.meta.source).toBe("file");
+  expect(v1.meta.type).toBe("image");
+  expect(v1.errors).toEqual([]);
+  // A second one under the same name is refused, and a file that is not media leaves nothing behind.
+  await expect(addFinal(root(), "logo", "", png())).rejects.toThrow("already exists");
+  await expect(addFinal(root(), "notes", "", new File(["x"], "notes.txt", { type: "text/plain" }))).rejects.toThrow("not an image or video");
+  expect(existsSync(join(root(), "notes"))).toBe(false);
+});
+
+test("delete for good refuses an entry that is not in _trash, and never a path outside it", async () => {
+  createSlot(root(), "hero", "", image);
+  trashSlot(root(), "hero");
+  await expect(deleteTrashed(join(root(), "_trash"), "nope")).rejects.toThrow("is not in _trash");
+  await expect(deleteTrashed(join(root(), "_trash"), "../hero")).rejects.toThrow("is not in _trash");
+  // "." and ".." are their own basename: they would name _trash itself, or the whole project.
+  await expect(deleteTrashed(join(root(), "_trash"), ".")).rejects.toThrow("is not in _trash");
+  await expect(deleteTrashed(join(root(), "_trash"), "..")).rejects.toThrow("is not in _trash");
+  expect(() => restoreTrashed(root(), "..")).toThrow("is not in _trash");
+  expect(existsSync(join(root(), "_trash"))).toBe(true);
+});
+
+// ---- requests that do not look like the page's ------------------------
+
+test("results dropped onto one version at the same time all keep their own number", async () => {
+  createSlot(root(), "hero", "", image);
+  const big = (byte: number) => png("big.png", new Array(2_000_000).fill(byte));
+  await Promise.all([addResults(root(), "hero", 1, [big(1), big(2), big(3)]), addResults(root(), "hero", 1, [png("a.png", [4]), png("b.png", [5])])]);
+  const files = readdirSync(hero("v1")).sort();
+  expect(files).toEqual(["1.png", "2.png", "3.png", "4.png", "5.png"]);
+  // Every byte value written is still there: nothing was overwritten.
+  expect(files.map((f) => readFileSync(hero("v1", f))[0]).sort()).toEqual([1, 2, 3, 4, 5]);
+});
+
+test("a version from a request body with missing or odd fields is refused, not a crash", () => {
+  createSlot(root(), "hero", "", image);
+  expect(() => addVersion(root(), "hero", undefined as never)).toThrow("The prompt is empty.");
+  expect(() => addVersion(root(), "hero", { ...image, prompt: 5 } as never)).toThrow("The prompt is empty.");
+  expect(() => addVersion(root(), "hero", { ...image, model: ["x"] } as never)).toThrow("Model is required.");
+  // carryFrom becomes part of a file name, so only a version number is followed.
+  writeFileSync(join(root(), "secret.md"), "---\nparams: { key: leaked }\n---\n\nx\n");
+  const n = addVersion(root(), "hero", { ...image, carryFrom: "/../../secret" } as never);
+  expect(readFileSync(hero(`v${n}.md`), "utf8")).not.toContain("leaked");
+});
+
+test("a new folder's name must work on Windows too: no device names, no trailing dot or space", () => {
+  for (const bad of ["con", "NUL", "aux.txt", "com1", "lpt9"]) expect(() => newFolderName(bad, "Project name")).toThrow("keeps for a device");
+  expect(() => newFolderName("draft.", "Project name")).toThrow("cannot end with a dot or a space");
+  expect(() => slotName("prn")).toThrow("keeps for a device");
+  expect(newFolderName("console", "Project name")).toBe("console");
+  expect(slotName("con-art")).toBe("con-art");
 });

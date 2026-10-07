@@ -61,6 +61,8 @@ export interface VersionMeta {
   duration: string | null;
   resolution: string | null;
   changes: string | null;
+  /** "file" when the human added the result ready-made, with no prompt or settings; null when it was generated. */
+  source: string | null;
   params: Record<string, string>;
 }
 
@@ -113,6 +115,11 @@ export interface ProjectSummary {
   path: string;
   external: boolean;
   counts: Record<Status, number>;
+  /**
+   * Per slot, a stamp of where it stands: "status:latest version:time of its review". It changes whenever the
+   * slot is handed on, so the page can tell which slot became the human's turn, and chime for that.
+   */
+  stamps: Record<string, string>;
   /** Agents waiting on this project's /wait for Notify agent. */
   listening: number;
 }
@@ -201,3 +208,9 @@ export interface NewVersionInput {
   /** Carry `inputs` and `params` over from this earlier version of the same slot. */
   carryFrom?: number;
 }
+
+/**
+ * The largest file the page sends, and so the most one upload request carries: the server holds a request in
+ * memory while it writes the files. Far above any clip a generator makes; several files go in several requests.
+ */
+export const MAX_UPLOAD_BYTES = 1024 ** 3;

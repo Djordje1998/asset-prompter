@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import type { NewVersionInput, Preset, ProjectSummary, Slot, TrashItem, Version } from "../shared/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MAX_UPLOAD_BYTES, type NewVersionInput, type Preset, type ProjectSummary, type Slot, type TrashItem, type Version } from "../shared/types";
 import { cloneName } from "../shared/names";
-import { useDismiss, useEscape } from "./hooks";
+import { useDialogFocus, useDismiss, useEscape } from "./hooks";
 import { LOCALE, lang, t } from "./i18n";
 import { Icon } from "./icons";
 import { KindIcon, RatioIcon } from "./shared";
-import { call, formatBytes, timeAgo } from "./lib";
+import { call, clipboardFiles, formatBytes, slotNameOf, thumbUrl, timeAgo, typedSlotName } from "./lib";
 import type { LightboxItem } from "./context";
 
 /**
@@ -40,9 +40,11 @@ export function Modal({
   wide?: boolean;
 }) {
   useEscape(onClose);
+  const box = useRef<HTMLDivElement>(null);
+  useDialogFocus(box);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-label={label ?? (typeof title === "string" ? title : undefined)}>
+      <div ref={box} tabIndex={-1} className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === "string" ? title : undefined)}>
         <header className="modal-head">
           <h2>{title}</h2>
           <button className="modal-close" onClick={onClose} aria-label={t("Close")} title={t("Close (Esc)")}>
@@ -89,17 +91,23 @@ export function TrashDialog({
   title,
   url,
   onRestore,
+  onDelete,
   onOpenFolder,
   onClose,
 }: {
   title: string;
   url: string;
   onRestore: (item: TrashItem) => Promise<void>;
+  /** Delete for good: the item goes to the computer's recycle bin. */
+  onDelete: (item: TrashItem) => Promise<void>;
   onOpenFolder: (path: string) => void;
   onClose: () => void;
 }) {
   const [data, setData] = useState<{ items: TrashItem[]; path: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** What is about to be deleted for good: one item, or everything. */
+  const [confirming, setConfirming] = useState<TrashItem | "all" | null>(null);
+  const [busy, setBusy] = useState(false);
   const load = () =>
     call<{ items: TrashItem[]; path: string }>("GET", url)
       .then(setData)
@@ -107,6 +115,43 @@ export function TrashDialog({
   useEffect(() => {
     load();
   }, [url]);
+  const deleteForGood = async () => {
+    if (!confirming || !data) return;
+    setBusy(true);
+    try {
+      for (const item of confirming === "all" ? data.items : [confirming]) await onDelete(item);
+    } finally {
+      setBusy(false);
+      setConfirming(null);
+      load();
+    }
+  };
+  if (confirming) {
+    const count = confirming === "all" ? data?.items.length ?? 0 : 1;
+    return (
+      <Modal title={t("Delete for good?")} onClose={() => setConfirming(null)}>
+        <div className="form">
+          <p>
+            {confirming === "all"
+              ? count === 1
+                ? t("The one item in _trash goes to your computer's recycle bin.")
+                : t("All {n} items in _trash go to your computer's recycle bin.", { n: count })
+              : t("{name} goes to your computer's recycle bin.", { name: confirming.name })}
+          </p>
+          <p className="field-hint">{t("The app forgets it, but you can still get it back from the recycle bin until you empty that.")}</p>
+          <footer className="modal-foot">
+            <button className="btn btn-danger" onClick={deleteForGood} disabled={busy}>
+              <Icon name="trash" size={12} />
+              {t("Delete for good")}
+            </button>
+            <button className="btn" onClick={() => setConfirming(null)} disabled={busy}>
+              {t("Keep")}
+            </button>
+          </footer>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title={title} onClose={onClose} wide>
       <div className="form">
@@ -121,7 +166,7 @@ export function TrashDialog({
                     /\.(mp4|webm|mov)(\?|$)/i.test(item.url) ? (
                       <video src={`${item.url}#t=0.1`} muted preload="metadata" />
                     ) : (
-                      <img src={item.url} alt="" loading="lazy" />
+                      <img src={thumbUrl(item.url)} alt="" loading="lazy" />
                     )
                   ) : (
                     <Icon name={item.kind === "project" ? "folder" : item.kind === "slot" ? "layers" : "image"} size={16} />
@@ -134,12 +179,17 @@ export function TrashDialog({
                     {item.trashedAt !== null && ` · ${t("deleted {when}", { when: timeAgo(item.trashedAt) })}`}
                   </span>
                 </span>
-                {item.kind !== "other" && (
-                  <button className="btn btn-small" onClick={() => onRestore(item).then(load)}>
-                    <Icon name="undo" size={12} />
-                    {t("Restore")}
+                <span className="trash-actions">
+                  {item.kind !== "other" && (
+                    <button className="btn btn-small" onClick={() => onRestore(item).then(load)}>
+                      <Icon name="undo" size={12} />
+                      {t("Restore")}
+                    </button>
+                  )}
+                  <button className="link danger is-strong" onClick={() => setConfirming(item)}>
+                    {t("Delete for good")}
                   </button>
-                )}
+                </span>
               </li>
             ))}
           </ul>
@@ -151,7 +201,12 @@ export function TrashDialog({
               {t("Open the _trash folder")}
             </button>
           )}
-          <span className="prompt-count">{t("To delete for good, empty the folder by hand.")}</span>
+          {data && data.items.length > 0 && (
+            <button className="link link-icon danger is-strong trash-empty-all" onClick={() => setConfirming("all")}>
+              <Icon name="trash" size={12} />
+              {t("Empty _trash")}
+            </button>
+          )}
         </footer>
       </div>
     </Modal>
@@ -164,6 +219,7 @@ export function PromptDialog({ slot, version, onCopy, onClose }: { slot: Slot; v
       <pre className="prompt-full">{version.prompt || version.raw}</pre>
       <footer className="modal-foot">
         <button className="btn btn-primary" onClick={onCopy}>
+          <Icon name="clipboard" />
           {t("Copy prompt")}
         </button>
         <span className="prompt-count">{t("{n} characters", { n: version.prompt.length.toLocaleString(LOCALE[lang]) })}</span>
@@ -204,8 +260,12 @@ export function Lightbox({
   const item = items[index]!;
   const step = (d: number) => setIndex((i) => (i + d + items.length) % items.length);
   useEscape(onClose);
+  const box = useRef<HTMLDivElement>(null);
+  useDialogFocus(box);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Alt+Left is the browser's Back, and Ctrl or Cmd with an arrow moves through text: not a step here.
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "ArrowLeft") step(-1);
       if (e.key === "ArrowRight") step(1);
     };
@@ -241,7 +301,15 @@ export function Lightbox({
     facts.seconds ? t("{n}s", { n: facts.seconds.toFixed(1) }) : null,
   ].filter(Boolean);
   return (
-    <div className={`overlay lightbox${strip ? " has-strip" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      ref={box}
+      tabIndex={-1}
+      className={`overlay lightbox${strip ? " has-strip" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={item.title}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="lightbox-stage" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className={`lightbox-frame${picked ? ` is-picked is-${picked}` : ""}`}>
           {picked && <span className="lightbox-picked">✓ {picked === "agent" ? t("Agent's pick") : t("Selected")}</span>}
@@ -284,7 +352,7 @@ export function Lightbox({
                 title={`${it.file ?? it.title}${state === "human" ? `, ${t("selected")}` : state === "agent" ? `, ${t("the agent's pick")}` : ""}${i === index ? `, ${t("showing now")}` : ""}`}
               >
                 <span className="lightbox-thumb-media">
-                  {it.kind === "video" ? <video src={`${it.url}#t=0.1`} muted preload="metadata" /> : <img src={it.url} alt="" loading="lazy" />}
+                  {it.kind === "video" ? <video src={`${it.url}#t=0.1`} muted preload="metadata" /> : <img src={thumbUrl(it.url)} alt="" loading="lazy" />}
                   {state && <span className="lightbox-thumb-check">✓</span>}
                 </span>
                 <span className="lightbox-thumb-name">{thumbName(it)}</span>
@@ -296,13 +364,14 @@ export function Lightbox({
       <footer className="lightbox-bar">
         <div className="lightbox-info">
           <div className="lightbox-title">
-            <span className="lightbox-caption" title={item.title}>
+            <span className="lightbox-caption">
               {item.title}
             </span>
             {item.version !== undefined && <span className="card-version">v{item.version}</span>}
             {item.tags?.map((tag) => (
-              <span key={tag} className={`lightbox-tag${tag === "Approved" ? " is-approved" : ""}`}>
-                {t(tag)}
+              // Tags come translated, so the approved one is told by its translation.
+              <span key={tag} className={`lightbox-tag${tag === t("Approved") ? " is-approved" : ""}`}>
+                {tag}
               </span>
             ))}
           </div>
@@ -581,11 +650,11 @@ export function NewSlotDialog({
         className="form"
         onSubmit={(e) => {
           e.preventDefault();
-          onCreate(name, description, version);
+          onCreate(slotNameOf(name), description, version);
         }}
       >
         <Field label={t("Slot name")} hint={t("This becomes the folder name, for example hero-banner.")}>
-          <input autoFocus required value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))} />
+          <input autoFocus required value={name} onChange={(e) => setName(typedSlotName(e.target.value))} />
         </Field>
         <Field label={t("What is this asset for")}>
           <input value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -668,11 +737,11 @@ export function CloneDialog({
         className="form"
         onSubmit={(e) => {
           e.preventDefault();
-          onClone(name, false);
+          onClone(slotNameOf(name), false);
         }}
       >
         <Field label={t("Name of the copy")} hint={t("The whole slot is copied: prompts, results, reviews and approval. The original stays as it is.")}>
-          <input autoFocus required value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))} onFocus={(e) => e.target.select()} />
+          <input autoFocus required value={name} onChange={(e) => setName(typedSlotName(e.target.value))} onFocus={(e) => e.target.select()} />
         </Field>
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
@@ -682,7 +751,7 @@ export function CloneDialog({
             <button
               className="btn"
               type="button"
-              onClick={(e) => e.currentTarget.form?.reportValidity() && onClone(name, true)}
+              onClick={(e) => e.currentTarget.form?.reportValidity() && onClone(slotNameOf(name), true)}
               title={t("The copy is not approved, so you can ask for changes on it right away")}
             >
               {t("Clone and remove approval")}
@@ -694,38 +763,180 @@ export function CloneDialog({
   );
 }
 
-export function NewProjectDialog({ projectsDir, onCreate, onClose }: { projectsDir: string; onCreate: (body: { name?: string; path?: string }) => void; onClose: () => void }) {
-  const [mode, setMode] = useState<"new" | "existing">("new");
-  const [value, setValue] = useState("");
+/** A finished image or video the human already has: it becomes an approved slot at once, with no prompt or settings. */
+export function AddFinalDialog({ onAdd, onClose }: { onAdd: (form: FormData, name: string) => void; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [over, setOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+  /** A pasted image has no name of its own worth keeping, so only a chosen or dropped file names the slot. */
+  const take = (files: FileList | File[] | null, pasted = false) => {
+    if (!files || files.length === 0) return;
+    const f = [...files].find((x) => x.type.startsWith("image/") || x.type.startsWith("video/"));
+    if (!f) return setError(t("Only an image or a video can be added here."));
+    if (f.size > MAX_UPLOAD_BYTES) return setError(t("{file} is larger than 1 GB, the most one file can be.", { file: f.name }));
+    setError(null);
+    setFile(f);
+    if (!pasted) setName((prev) => prev || f.name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
+  };
+  const choose = () => picker.current?.click();
+  const paste = async () => {
+    try {
+      take(await clipboardFiles(), true);
+    } catch (e) {
+      // The shared messages send the reader to point at a card; here Ctrl+V works anywhere in the dialog.
+      const empty = t("There is no image on the clipboard. Copy the image in the generator first.");
+      setError((e as Error).message === empty ? empty : t("The browser did not let the page read the clipboard. Press Ctrl+V instead."));
+    }
+  };
+  // Ctrl+V anywhere in the dialog takes the image. Caught before the page's own paste, which would look for a
+  // card under the pointer; a paste with no file in it, like text into a field, goes on as usual.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const files = [...(e.clipboardData?.files ?? [])];
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      take(files, true);
+    };
+    window.addEventListener("paste", onPaste, true);
+    return () => window.removeEventListener("paste", onPaste, true);
+  }, []);
   return (
-    <Modal title={t("Add a project")} onClose={onClose}>
+    <Modal title={t("Add finished asset")} onClose={onClose}>
       <form
         className="form"
         onSubmit={(e) => {
           e.preventDefault();
-          onCreate(mode === "new" ? { name: value } : { path: value });
+          if (!file) return;
+          const form = new FormData();
+          form.append("name", slotNameOf(name));
+          form.append("description", description);
+          form.append("file", file);
+          onAdd(form, slotNameOf(name));
         }}
       >
-        <div className="segmented">
-          <button type="button" className={mode === "new" ? "is-on" : ""} onClick={() => setMode("new")}>
-            {t("New project")}
-          </button>
-          <button type="button" className={mode === "existing" ? "is-on" : ""} onClick={() => setMode("existing")}>
-            {t("Existing folder")}
-          </button>
+        <p className="field-hint">{t("For an image or video you already have. It goes straight to Done as an approved asset, with no prompt or settings, and the agent can use it like any other.")}</p>
+        <div
+          className={`final-drop${over ? " is-over" : ""}${file ? " has-file" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            take(e.dataTransfer.files);
+          }}
+        >
+          <input
+            ref={picker}
+            type="file"
+            hidden
+            accept="image/*,video/*"
+            onChange={(e) => {
+              take(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {file && preview ? (
+            <>
+              <button type="button" className="final-drop-preview" onClick={choose} title={t("Choose another")}>
+                {file.type.startsWith("video/") ? <video src={preview} muted playsInline controls={false} /> : <img src={preview} alt="" />}
+              </button>
+              <div className="final-drop-bar">
+                <KindIcon kind={file.type.startsWith("video/") ? "video" : "image"} />
+                <span className="final-drop-name" title={file.name}>
+                  {file.name} · {formatBytes(file.size)}
+                </span>
+                <button type="button" className="link" onClick={choose}>
+                  {t("Choose another")}
+                </button>
+                <button type="button" className="link" onClick={paste} title={t("Add the image you copied in the generator")}>
+                  {t("Paste")}
+                </button>
+                <button type="button" className="link danger" onClick={() => setFile(null)}>
+                  {t("Remove")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button type="button" className="final-drop-empty" onClick={choose}>
+                <span className="final-drop-kinds">
+                  <span className="mediabox-icon is-image">
+                    <KindIcon kind="image" size={22} />
+                  </span>
+                  <span className="mediabox-icon is-video">
+                    <KindIcon kind="video" size={22} />
+                  </span>
+                </span>
+                <strong>{t("Drop the image or video here")}</strong>
+                <span>{t("or click to choose the file. An image can also be pasted with Ctrl+V; a video comes in as a file.")}</span>
+              </button>
+              {/* Browsers cannot put videos on the clipboard, so a video always comes in as a file. */}
+              <div className="final-drop-actions">
+                <button type="button" className="btn" onClick={paste} title={t("Add the image you copied in the generator")}>
+                  <Icon name="clipboard" />
+                  {t("Paste image")}
+                </button>
+                <button type="button" className="btn" onClick={choose}>
+                  <Icon name="upload" />
+                  {t("Choose video")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
-        {mode === "new" ? (
-          <Field label={t("Project name")} hint={t("Created as a folder in {dir}", { dir: projectsDir })}>
-            <input autoFocus required value={value} onChange={(e) => setValue(e.target.value.toLowerCase().replace(/\s+/g, "-"))} />
-          </Field>
-        ) : (
-          <Field label={t("Full path of the folder")} hint={t("Use this for a folder inside a repo your agent works in. Slots are created directly in it.")}>
-            <input autoFocus required value={value} onChange={(e) => setValue(e.target.value)} placeholder="/home/you/repo/assets" />
-          </Field>
+        {error && (
+          <div className="notice notice-error" role="alert">
+            {error}
+          </div>
         )}
+        <Field label={t("Slot name")} hint={t("This becomes the folder name, for example hero-banner.")}>
+          <input required value={name} onChange={(e) => setName(typedSlotName(e.target.value))} />
+        </Field>
+        <Field label={t("What is this asset for")}>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <footer className="modal-foot">
+          <button className="btn btn-primary" type="submit" disabled={!file || !name}>
+            {t("Add to Done")}
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * A new project is a new folder in the projects folder. A folder elsewhere, such as one inside an agent's repo,
+ * is added by hand, in config.json's externalProjects: rare enough not to need a form that can point at a whole drive.
+ */
+export function NewProjectDialog({ projectsDir, onCreate, onClose }: { projectsDir: string; onCreate: (body: { name: string }) => void; onClose: () => void }) {
+  const [value, setValue] = useState("");
+  return (
+    <Modal title={t("New project")} onClose={onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onCreate({ name: value });
+        }}
+      >
+        <Field label={t("Project name")} hint={t("Created as a folder in {dir}", { dir: projectsDir })}>
+          <input autoFocus required value={value} onChange={(e) => setValue(e.target.value.toLowerCase().replace(/\s+/g, "-"))} />
+        </Field>
         <footer className="modal-foot">
           <button className="btn btn-primary" type="submit">
-            {mode === "new" ? t("Create project") : t("Add folder")}
+            {t("Create project")}
           </button>
         </footer>
       </form>

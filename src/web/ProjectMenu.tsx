@@ -87,8 +87,11 @@ export function ProjectMenu({
               onAdd();
             }}
           >
-            {t("Add a project")}
+            <Icon name="plus" size={12} />
+            {t("Create project")}
           </button>
+          {/* Deleting stands apart from making, so it is never hit on the way to the row above. */}
+          {(trashed > 0 || project) && <div className="menu-sep" role="separator" />}
           {trashed > 0 && (
             <button
               className="menu-item menu-trash"

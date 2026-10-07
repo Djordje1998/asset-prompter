@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Preset, ProjectSummary, Slot, Version } from "../shared/types";
+import type { Preset, Slot, Version } from "../shared/types";
 
 export interface LightboxItem {
   url: string;
@@ -15,13 +15,21 @@ export interface LightboxItem {
   pickable?: boolean;
 }
 
+/** What the toast says after a change: the words, and the exact text it was about, such as what was copied. */
+export interface Notice {
+  message: string;
+  /** Shown under the message, in full or cut after two lines: a copied path, prompt or file name. */
+  detail?: string;
+}
+
 /** What every card needs from the app: the open project, and the ways to change it or open a dialog. */
 export interface Ctx {
-  project: ProjectSummary;
+  /** Only the id: the project's summary changes with every slot, and the cards would all render again with it. */
+  projectId: string;
   /** The installed tool presets: what each generator offers, and its logo. */
   presets: Preset[];
   /** Runs a change, reports the outcome in the toast and reloads the feed. */
-  act: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
+  act: (fn: () => Promise<unknown>, done?: string | Notice) => Promise<void>;
   toast: (message: string, isError?: boolean) => void;
   /** Runs a removal that answers with an undo token, and offers Undo (and Ctrl+Z) in the toast for a few seconds. */
   undoable: (fn: () => Promise<{ undo: string }>, done: string, undone: string) => Promise<void>;

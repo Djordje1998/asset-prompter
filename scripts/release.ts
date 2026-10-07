@@ -31,7 +31,7 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 if (pkg.version === version) fail(`package.json is already at ${version}.`);
 
 const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
-if (!new RegExp(`^## ${version.replace(/\./g, "\.")}( |$)`, "m").test(changelog)) {
+if (!new RegExp(`^## ${version.replace(/\./g, "\\.")}( |$)`, "m").test(changelog)) {
   fail(`CHANGELOG.md has no "## ${version}" section. Write what changed first, then release.`);
 }
 

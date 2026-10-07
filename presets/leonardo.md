@@ -1,6 +1,6 @@
 ---
 tool: leonardo
-name: Leonardo.Ai
+name: Leonardo.Ai
 short: Leonardo
 checked: 2026-10-06
 prompt_limit: null

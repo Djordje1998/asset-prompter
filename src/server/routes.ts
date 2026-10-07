@@ -3,12 +3,15 @@ import { isAbsolute, join, resolve } from "node:path";
 import type { AppState, Preset, ProjectSummary } from "../shared/types";
 import {
   UserError,
+  addFinal,
   addResults,
   addVersion,
   cloneSlot,
   createSlot,
+  deleteTrashed,
   deleteResult,
   listTrash,
+  newFolderName,
   restoreProject,
   restoreResult,
   restoreTrashed,
@@ -25,14 +28,16 @@ import {
 } from "./actions";
 import { afterResults, refreshInfo } from "./analysis";
 import { type Config, saveConfig } from "./config";
-import { writeHowTo } from "./howto";
+import { thumbnail } from "./thumbs";
+import { HOWTO_FILE, writeHowTo } from "./howto";
 import { inside, json, notFound, openInFileManager, serveFile } from "./http";
 import { version } from "../../package.json";
 import { eventStream, notifyChange, refreshWatchers } from "./live";
+import { findTool } from "./media";
 import { logoPath } from "./preset";
 import { type Project, findProject, isDir, listProjects } from "./projects";
 import { projectScans, selfContained } from "./scans";
-import { TRASH_DIR, countStatuses, fileUrl, mediaKind, scanProject } from "./store";
+import { TRASH_DIR, countStatuses, fileUrl, mediaKind, scanProject, slotStamps } from "./store";
 import { hasNews, listening, notifyAgent, pendingApprovals, stopAgents, waitForNotify } from "./wake";
 
 export interface App {
@@ -66,11 +71,28 @@ function offerUndo(project: Project, run: () => void): string {
 export const projectsOf = (app: App) => listProjects(app.projectsDir, app.config.externalProjects);
 
 const waitUrl = (app: App, id: string) => `http://localhost:${app.config.port}/api/projects/${encodeURIComponent(id)}/wait`;
-export const howTo = (app: App, p: { id: string; path: string }) => writeHowTo(p.path, app.presets, waitUrl(app, p.id));
+export function howTo(app: App, p: { id: string; path: string }): void {
+  try {
+    writeHowTo(p.path, app.presets, waitUrl(app, p.id));
+  } catch (e) {
+    // A folder the app cannot write to (read-only, or the file locked by another program) still shows;
+    // only its instructions are missing. Thrown, it took the whole project list down with it.
+    console.warn(`Cannot write ${HOWTO_FILE} in ${p.path}: ${(e as Error).message}`);
+  }
+}
 
 function versionNumber(value: string): number {
   if (!/^\d+$/.test(value)) throw new UserError(`"${value}" is not a version number.`);
   return Number(value);
+}
+
+/** decodeURIComponent, with a malformed escape answered as the client's mistake rather than a server error. */
+function decode(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    throw new UserError(`"${part}" is not a valid URL part.`);
+  }
 }
 
 /** Bun matches the raw path; the params are decoded here, so a malformed escape is still an error. */
@@ -78,7 +100,7 @@ function decodeParams(pattern: string, req: Request): Params {
   const raw = new URL(req.url).pathname.split("/");
   const params: Params = {};
   pattern.split("/").forEach((part, i) => {
-    if (part.startsWith(":")) params[part.slice(1)] = decodeURIComponent(raw[i] ?? "");
+    if (part.startsWith(":")) params[part.slice(1)] = decode(raw[i] ?? "");
   });
   return params;
 }
@@ -88,8 +110,18 @@ export function apiRoutes(app: App, wrap: Wrap) {
   const { config, projectsDir, presets } = app;
   const projects = () => projectsOf(app);
   const project = (p: Params) => findProject(projects(), p.id ?? "");
-  const slotOf = (p: Params) => segment(p.slot, "Slot");
-  const body = async (req: Request) => (await req.json()) as Record<string, any>;
+  // Folders starting with _ or . are never slots (_trash, .git), so no call may act on one as if it were.
+  const slotOf = (p: Params) => slugName(p.slot, "Slot");
+  const body = async (req: Request): Promise<Record<string, any>> => {
+    let data: unknown;
+    try {
+      data = await req.json();
+    } catch {
+      throw new UserError("The request body is not valid JSON.");
+    }
+    if (data === null || typeof data !== "object" || Array.isArray(data)) throw new UserError("The request body must be a JSON object.");
+    return data as Record<string, any>;
+  };
   const watchAll = () => refreshWatchers(projectsDir, config.externalProjects);
   const slotsOf = (p: Project) => projectScans.get(p.id, p.path, () => scanProject(p.id, p.path, presets), (slots) => selfContained(p.path, slots));
   /** After a call that may have written: the project it names, or every project when it names none. */
@@ -107,9 +139,12 @@ export function apiRoutes(app: App, wrap: Wrap) {
         // A project folder made by hand (or by an agent) gets its instructions as soon as the page notices it.
         // Checked again only after the folder changed: the text depends on presets and the port, fixed while running.
         for (const p of all) projectScans.whenNew(p.id, p.path, () => howTo(app, p));
-        const list: ProjectSummary[] = all.map((p) => ({ ...p, counts: countStatuses(slotsOf(p)), listening: listening(p.id) }));
+        const list: ProjectSummary[] = all.map((p) => {
+          const slots = slotsOf(p);
+          return { ...p, counts: countStatuses(slots), stamps: slotStamps(slots), listening: listening(p.id) };
+        });
         const trashedProjects = listTrash(join(projectsDir, TRASH_DIR), true).filter((i) => i.kind === "project").length;
-        const state: AppState = { projects: list, presets, ffmpeg: Bun.which("ffmpeg") !== null, projectsDir, trashedProjects, version };
+        const state: AppState = { projects: list, presets, ffmpeg: findTool("ffmpeg") !== null, projectsDir, trashedProjects, version };
         return json(state);
       },
     },
@@ -145,22 +180,9 @@ export function apiRoutes(app: App, wrap: Wrap) {
 
     "/api/projects": {
       POST: async (req) => {
+        // Only new folders in the projects folder: one elsewhere is added by hand in config.json (externalProjects).
         const data = await body(req);
-        if (typeof data.path === "string" && data.path.trim()) {
-          const path = resolve(data.path.trim());
-          if (!isAbsolute(data.path.trim())) throw new UserError("Enter the full path of the folder.");
-          if (!isDir(path)) throw new UserError(`${path} is not an existing folder.`);
-          if (path === projectsDir || inside(projectsDir, path)) throw new UserError("That folder is already inside the default projects folder.");
-          if (!config.externalProjects.includes(path)) {
-            config.externalProjects.push(path);
-            saveConfig(config);
-          }
-          const added = projects().find((p) => p.path === path)!;
-          howTo(app, added);
-          watchAll();
-          return json({ id: added.id });
-        }
-        const name = slugName(data.name, "Project name");
+        const name = newFolderName(data.name, "Project name");
         const path = join(projectsDir, name);
         if (existsSync(path)) throw new UserError(`A project named "${name}" already exists.`);
         mkdirSync(path);
@@ -235,6 +257,19 @@ export function apiRoutes(app: App, wrap: Wrap) {
       },
     },
 
+    // A finished asset, straight into Done: multipart with name, description and one file.
+    "/api/projects/:id/slots/final": {
+      POST: async (req, p) => {
+        const proj = project(p);
+        const form = await req.formData();
+        const file = form.get("file");
+        if (!(file instanceof File)) throw new UserError("No file was received.");
+        const name = slotName(String(form.get("name") ?? ""));
+        await addFinal(proj.path, name, String(form.get("description") ?? ""), file);
+        return json({ ok: true });
+      },
+    },
+
     "/api/projects/:id/slots/:slot": {
       DELETE: (_, p) => {
         const proj = project(p);
@@ -258,6 +293,15 @@ export function apiRoutes(app: App, wrap: Wrap) {
       },
     },
 
+    // Delete for good: the entry leaves _trash for the computer's recycle bin.
+    "/api/trash/:entry": {
+      DELETE: async (_, p) => {
+        await deleteTrashed(join(projectsDir, TRASH_DIR), p.entry ?? "");
+        notifyChange();
+        return json({ ok: true });
+      },
+    },
+
     // Deleted slots and results of one project, in its _trash.
     "/api/projects/:id/trash": {
       GET: (_, p) => {
@@ -274,6 +318,15 @@ export function apiRoutes(app: App, wrap: Wrap) {
         const restored = restoreTrashed(proj.path, String((await body(req)).entry ?? ""));
         notifyChange();
         return json({ ok: true, restored });
+      },
+    },
+
+    "/api/projects/:id/trash/:entry": {
+      DELETE: async (_, p) => {
+        const proj = project(p);
+        await deleteTrashed(join(proj.path, TRASH_DIR), p.entry ?? "");
+        notifyChange();
+        return json({ ok: true });
       },
     },
 
@@ -383,14 +436,17 @@ export function apiRoutes(app: App, wrap: Wrap) {
       },
     },
 
-    // A file inside a project: /files/<project id>/<path inside it>, each part URL-encoded.
+    // A file inside a project: /files/<project id>/<path inside it>, each part URL-encoded. With ?thumb, an
+    // image comes as its small copy when there is one (thumbs.ts), for the tiles and strips.
     "/files/*": {
-      GET: (req) => {
-        const [id, ...rest] = new URL(req.url).pathname.split("/").slice(2).map(decodeURIComponent);
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const [id, ...rest] = url.pathname.split("/").slice(2).map(decode);
         const proj = findProject(projects(), id ?? "");
         const path = resolve(proj.path, ...rest);
         if (!inside(proj.path, path)) return new Response("Not found", { status: 404 });
-        return serveFile(req, path);
+        const thumb = url.searchParams.has("thumb") ? await thumbnail(path) : null;
+        return serveFile(req, thumb ?? path);
       },
     },
   };

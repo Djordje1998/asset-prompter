@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 import type { Preset, Version } from "../shared/types";
-import { describeInfo, probeMedia } from "./media";
+import { describeInfo, findTool, probeMedia } from "./media";
 import type { Project } from "./projects";
 import { projectScans } from "./scans";
 import { framesDirOf, scanProject } from "./store";
@@ -48,7 +48,7 @@ const perSecond = (values: number[]) => {
  * frame side by side, a motion map, and per-second motion numbers.
  */
 export async function analyzeVideo(video: string): Promise<void> {
-  const ffmpeg = Bun.which("ffmpeg");
+  const ffmpeg = findTool("ffmpeg");
   if (!ffmpeg) return;
   const dir = framesDirOf(video);
   rmSync(dir, { recursive: true, force: true });
@@ -245,15 +245,23 @@ export function afterResults(project: Project, presets: Preset[], slot: string, 
 export function backfill(projects: () => Project[], presets: Preset[]): void {
   enqueue(async () => {
     for (const project of projects()) {
+      // One scan serves every version, until a video is analysed: the folder may change while ffmpeg runs,
+      // so from then on each version is read afresh. A scan per version made a start take seconds per project.
+      let fresh = true;
       for (const slot of scanProject(project.id, project.path, presets)) {
         for (const version of slot.versions) {
           if (version.results.length === 0) continue;
           const videos = version.results.filter((c) => c.kind === "video" && !hasAnalysis(c.path));
-          if (Bun.which("ffmpeg")) for (const c of videos) await analyzeVideo(c.path);
+          if (videos.length && findTool("ffmpeg")) {
+            for (const c of videos) await analyzeVideo(c.path);
+            fresh = false;
+          }
           recordInputs(project.path, version, true);
-          refreshInfo(project, presets, slot.name, version.n);
+          if (fresh) writeInfo(project.path, version);
+          else refreshInfo(project, presets, slot.name, version.n);
         }
       }
+      projectScans.invalidate(project.path);
     }
   });
 }

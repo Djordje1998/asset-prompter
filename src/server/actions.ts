@@ -2,6 +2,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync,
 import { basename, extname, join } from "node:path";
 import type { NewVersionInput, TrashItem } from "../shared/types";
 import { parseDoc, writeDoc } from "./frontmatter";
+import { recycle } from "./recycle";
 import {
   APPROVED_FILE,
   SELECTED_FILE,
@@ -32,9 +33,23 @@ export function slugName(value: unknown, what: string): string {
   return s;
 }
 
+/** Names Windows keeps for devices, with or without an extension. */
+const RESERVED_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+/**
+ * The name of a folder the app is about to make. Windows strips a trailing dot or space and keeps device names
+ * such as con: the app can still make such a folder, but File Explorer, PowerShell and agents cannot open it.
+ */
+export function newFolderName(value: unknown, what: string): string {
+  const s = slugName(value, what);
+  if (RESERVED_NAME.test(s)) throw new UserError(`"${s}" is a name Windows keeps for a device; choose another.`);
+  if (/[. ]$/.test(s)) throw new UserError(`${what} cannot end with a dot or a space.`);
+  return s;
+}
+
 /** Slots made in the app follow the same naming rule HOW-TO-USE.md gives agents; project names stay looser. */
 export function slotName(value: unknown): string {
-  const s = slugName(value, "Slot name");
+  const s = newFolderName(value, "Slot name");
   if (!SLOT_NAME.test(s)) throw new UserError(`Slot name "${s}" can only use lowercase letters, digits and single hyphens between them, like hero-banner.`);
   return s;
 }
@@ -84,11 +99,34 @@ export function createSlot(projectDir: string, name: string, description: string
   }
 }
 
+/**
+ * A finished asset the human already has: a new slot with one version marked `source: file`, the file as its
+ * only result, approved, so it lands in Done with final.<ext> at once and the agent can use it like any other.
+ */
+export async function addFinal(projectDir: string, name: string, description: string, file: File): Promise<void> {
+  const slotDir = join(projectDir, name);
+  if (existsSync(slotDir)) throw new UserError(`A slot named "${name}" already exists.`);
+  const ext = (extname(file.name) || MIME_EXT[file.type] || "").toLowerCase();
+  const kind = mediaKindOfExt(ext);
+  if (!kind) throw new UserError(`"${file.name}" is not an image or video this app can show.`);
+  mkdirSync(slotDir, { recursive: true });
+  try {
+    if (description.trim()) writeFileSync(join(slotDir, "slot.md"), description.trim() + "\n");
+    writeFileSync(join(slotDir, "v1.md"), writeDoc({ type: kind, source: "file" }, "Added as a finished file, not generated from a prompt."), { flag: "wx" });
+    await addResults(projectDir, name, 1, [file]);
+    setApproval(projectDir, name, 1);
+  } catch (e) {
+    rmSync(slotDir, { recursive: true, force: true });
+    throw e;
+  }
+}
+
 export function addVersion(projectDir: string, slot: string, input: NewVersionInput): number {
   const slotDir = join(projectDir, slot);
   if (!existsSync(slotDir)) throw new UserError(`Slot "${slot}" does not exist.`);
-  if (!input.prompt?.trim()) throw new UserError("The prompt is empty.");
-  if (!input.model?.trim()) throw new UserError("Model is required.");
+  // The body comes straight from a request, so nothing in it is trusted to have the declared type.
+  if (typeof input?.prompt !== "string" || !input.prompt.trim()) throw new UserError("The prompt is empty.");
+  if (typeof input.model !== "string" || !input.model.trim()) throw new UserError("Model is required.");
   if (input.type !== "image" && input.type !== "video") throw new UserError("Type must be image or video.");
   const n = (listVersionNumbers(slotDir).at(-1) ?? 0) + 1;
   const data: Record<string, unknown> = {};
@@ -96,7 +134,8 @@ export function addVersion(projectDir: string, slot: string, input: NewVersionIn
     const value = input[key]?.toString().trim();
     if (value) data[key] = value;
   }
-  if (input.carryFrom && existsSync(join(slotDir, `v${input.carryFrom}.md`))) {
+  // Only a whole number: it becomes part of a file name.
+  if (Number.isInteger(input.carryFrom) && existsSync(join(slotDir, `v${input.carryFrom}.md`))) {
     const previous = parseDoc(readFileSync(join(slotDir, `v${input.carryFrom}.md`), "utf8")).data;
     if (previous.inputs) data.inputs = previous.inputs;
     if (previous.params) data.params = previous.params;
@@ -122,11 +161,27 @@ export async function addResults(projectDir: string, slot: string, n: number, fi
   mkdirSync(dir, { recursive: true });
   // No pick is written here: with several results the agent picks, unless the human does.
   let next = Math.max(0, ...listResultFiles(dir).map((f) => parseInt(f, 10) || 0)) + 1;
-  const written: string[] = [];
-  for (const { file, ext } of named) {
-    const name = `${next++}${ext}`;
-    await Bun.write(join(dir, name), file);
-    written.push(join(dir, name));
+  // Every name is taken on disk before the first write is awaited. Otherwise a second drop onto the same
+  // version, while a large first one is still being written, picked the same numbers and overwrote it.
+  const written = named.map(({ ext }) => {
+    for (;;) {
+      const path = join(dir, `${next++}${ext}`);
+      try {
+        writeFileSync(path, "", { flag: "wx" });
+        return path;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+    }
+  });
+  for (const [i, { file }] of named.entries()) {
+    try {
+      await Bun.write(written[i]!, file);
+    } catch (e) {
+      // A failed write (a full disk, say) must not leave empty results behind.
+      for (const path of written.slice(i)) rmSync(path, { force: true });
+      throw e;
+    }
   }
   syncFinal(projectDir, slot);
   return written;
@@ -310,9 +365,17 @@ export function listTrash(trashDir: string, projects: boolean): TrashItem[] {
 }
 
 const trashEntry = (trashDir: string, entry: string) => {
-  if (!entry || entry !== basename(entry) || !existsSync(join(trashDir, entry))) throw new UserError(`${entry} is not in _trash.`);
+  // "." and ".." are their own basename, and would name the _trash folder itself or the folder holding it.
+  if (!entry || entry === "." || entry === ".." || entry !== basename(entry) || !existsSync(join(trashDir, entry))) {
+    throw new UserError(`${entry} is not in _trash.`);
+  }
   return join(trashDir, entry);
 };
+
+/** Sends an item of a _trash folder to the computer's recycle bin: gone from the app, still recoverable from the desktop. */
+export async function deleteTrashed(trashDir: string, entry: string): Promise<void> {
+  await recycle(trashEntry(trashDir, entry));
+}
 
 /** Puts a project from projects/_trash back under its own name; returns that name. */
 export function restoreTrashedProject(projectsDir: string, entry: string): string {

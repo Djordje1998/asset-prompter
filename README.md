@@ -98,7 +98,7 @@ The app opens at **http://127.0.0.1:4777** and is reachable from this machine on
 
 ### First use
 
-1. Open a project in the app, or add a folder from anywhere, such as one inside the repo your agent works in.
+1. Create a project in the app: a new folder in `projects/`. To keep one elsewhere, such as inside the repo your agent works in, add its full path to `externalProjects` in `config.json` and restart the app.
 2. Press **Copy agent instructions** and paste it into a new chat with your agent. That is the only message it needs.
 3. Generate what appears, drop the results, approve what you like. After each batch, press **Notify agent**.
 

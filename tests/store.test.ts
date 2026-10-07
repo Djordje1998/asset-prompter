@@ -282,7 +282,7 @@ test("media kind comes from the extension alone, in any case, and needs the dot"
 });
 
 function slot_meta() {
-  return { tool: null, type: null, model: null, mode: null, aspect_ratio: null, duration: null, resolution: null, changes: null, params: {} };
+  return { tool: null, type: null, model: null, mode: null, aspect_ratio: null, duration: null, resolution: null, changes: null, source: null, params: {} };
 }
 
 test("slots are numbered by age, the oldest is 1", () => {
@@ -297,4 +297,16 @@ test("slots are numbered by age, the oldest is 1", () => {
     ["middle", 2],
     ["oldest", 1],
   ]);
+});
+
+test("a folder where a file belongs does not fail the scan of the whole project", async () => {
+  createSlot(root, "hero", "", image);
+  await addResults(root, "hero", 1, [png()]);
+  for (const name of ["slot.md", "v2.md", "APPROVED", "v1.review.md", "v1/selected.txt"]) mkdirSync(join(root, "hero", name));
+  writeFileSync(join(root, "hero", "v1", "2.mp4.frames"), "not a folder");
+  const s = slot();
+  expect(s.versions.map((v) => v.n)).toEqual([1]);
+  expect(s.description).toBe(null);
+  expect(s.approved).toBe(null);
+  expect(s.versions[0]!.results.map((r) => r.file)).toEqual(["1.png"]);
 });

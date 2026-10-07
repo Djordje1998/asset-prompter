@@ -39,15 +39,29 @@ export function register(code: Lang, table: Record<string, string>): void {
   tables[code] = table;
 }
 
+/** The date and time formats of the current language, for "when" labels. */
+export const LOCALE: Record<Lang, string> = { en: "en-GB", sr: "sr-Latn-RS" };
+
+const plurals = new Intl.PluralRules(LOCALE[lang]);
+/** The form for a count, in the order the translations write them: one, few, other. */
+const PLURAL_FORM: Partial<Record<Intl.LDMLPluralRule, number>> = { one: 0, few: 1 };
+
 /**
  * The text in the current language. `{name}` in the text is filled from `params`. The English is the key, so
  * write the English here exactly as it should read, including its punctuation.
+ *
+ * A translation picks the word for a count with `{n|one|few|other}`, the forms Serbian has: 1, 21, 31 take the
+ * first, 2 to 4 (not 12 to 14) the second, the rest the third. A form may hold placeholders: `{n|stavka|sve {n} stavke}`.
  */
 export function t(english: string, params?: Record<string, string | number>): string {
   const text = tables[lang]?.[english] ?? english;
   if (!params) return text;
-  return text.replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match));
+  return text
+    .replace(/\{(\w+)\|((?:[^{}]|\{\w+\})*)\}/g, (match, key: string, list: string) => {
+      const n = Number(params[key]);
+      if (!(key in params) || !Number.isFinite(n)) return match;
+      const forms = list.split("|");
+      return forms[Math.min(PLURAL_FORM[plurals.select(n)] ?? 2, forms.length - 1)]!;
+    })
+    .replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match));
 }
-
-/** The date and time formats of the current language, for "when" labels. */
-export const LOCALE: Record<Lang, string> = { en: "en-GB", sr: "sr-Latn-RS" };

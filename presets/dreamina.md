@@ -1,6 +1,6 @@
 ---
 tool: dreamina
-name: Dreamina
+name: Dreamina
 short: Dreamina
 checked: 2026-10-06
 prompt_limit: null

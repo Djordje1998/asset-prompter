@@ -19,8 +19,8 @@
   --edge: #37343e;
   --edge-strong: #4a4652;
   --line: 1px solid var(--edge);
-  --shadow: 4px 4px 0 var(--ink);
-  --shadow-small: 2px 2px 0 var(--ink);
+  --shadow: 4px 4px 0 var(--shadow-ink);
+  --shadow-small: 2px 2px 0 var(--shadow-ink);
   --radius: 6px;
 
   /* text */
@@ -44,6 +44,23 @@
 
   --display: "Bricolage Grotesque", "Arial Narrow", system-ui, sans-serif;
   --body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* the rest of the chrome, as tokens so the light theme can swap them (section 27) */
+  --media-bg: var(--ink);
+  --shadow-ink: var(--ink);
+  --on-tone: #111014;
+  --primary-text: var(--primary);
+  --edge-hover: #58545f;
+  --btn-hover: #35323c;
+  --scrim: rgb(10 9 12 / 0.72);
+  --scrim-strong: rgb(10 9 12 / 0.82);
+  --drop: rgb(0 0 0 / 0.9);
+  --bar-edge: #0b0a0d;
+  --glass: rgb(38 36 43 / 0.85);
+  --glass-hover: rgb(53 50 60 / 0.95);
+  --stage-dot: #2b2832;
+  --brand-fade: #cfc9c1;
+  --topbar-fill: linear-gradient(180deg, #17151c, #121016);
 }
 
 * {
@@ -93,6 +110,11 @@ button {
   outline-offset: 2px;
 }
 
+/* A dialog takes the focus itself only to hold the keyboard while it is open; the ring belongs to what is in it. */
+[role="dialog"][tabindex="-1"]:focus {
+  outline: none;
+}
+
 /* Pixel glyphs: crisp, never smoothed, aligned with the text next to them. */
 .icon {
   flex: none;
@@ -111,6 +133,20 @@ button {
 .link-icon {
   display: inline-flex;
   align-items: center;
+}
+
+/* The folder button in the top bar is often only its icon: a key-sized area to click, not the icon's 14px. */
+.topbar > .link-icon {
+  min-width: 28px;
+  min-height: 28px;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.topbar > .link-icon:hover {
+  background: var(--card-hover);
+  color: var(--text);
 }
 
 /* ---- tooltip: one for the whole app (Tooltip.tsx), a small dark card with an info mark ---- */
@@ -150,7 +186,7 @@ button {
 .tip > .icon {
   flex: none;
   margin-top: 2px;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .brand {
@@ -215,8 +251,8 @@ button {
 }
 
 .btn:hover {
-  background: #35323c;
-  border-color: #58545f;
+  background: var(--btn-hover);
+  border-color: var(--edge-hover);
 }
 
 .btn:active {
@@ -276,6 +312,18 @@ button {
   color: var(--error);
 }
 
+/* The step that removes, not the one that asks: red from the start, so it is never taken for a plain link. */
+.link.danger.is-strong {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.link.danger.is-strong:hover {
+  color: color-mix(in srgb, var(--error) 75%, var(--text));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .drag-handle {
   cursor: grab;
 }
@@ -321,7 +369,7 @@ button {
 }
 
 .workspace-icon {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .workspace-text {
@@ -400,7 +448,7 @@ button {
   display: flex;
   width: 12px;
   flex: none;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .menu-path {
@@ -414,10 +462,18 @@ button {
 }
 
 .menu-add {
+  gap: 8px;
   margin-top: 4px;
   border-top: var(--line);
-  color: var(--primary);
+  color: var(--primary-text);
   font-weight: 600;
+}
+
+/* Between making a project and deleting one: a line with air on both sides. */
+.menu-sep {
+  height: 1px;
+  margin: 6px 6px;
+  background: var(--edge-strong);
 }
 
 .menu-trash {
@@ -478,7 +534,7 @@ button {
   width: 56px;
   height: 40px;
   overflow: hidden;
-  background: var(--ink);
+  background: var(--media-bg);
   border: 1px solid var(--edge);
   border-radius: 4px;
   color: var(--muted);
@@ -553,12 +609,12 @@ button {
   background: var(--card-hover);
 }
 
-/* Pressed in while on, like a latched key. */
+/* Pressed in while on, like a latched key: it sits down into its own shadow, which it then covers, on a
+   surface a step deeper than the raised keys around it. */
 .toggle.is-on {
   color: var(--text);
   background: var(--well);
-  box-shadow: inset 2px 2px 0 var(--ink);
-  transform: translate(1px, 1px);
+  transform: translate(2px, 2px);
 }
 
 .toggle::before {
@@ -568,7 +624,7 @@ button {
   height: 8px;
   border-radius: 50%;
   background: var(--edge-strong);
-  box-shadow: inset 0 0 0 1px var(--ink);
+  box-shadow: inset 0 0 0 1px var(--shadow-ink);
 }
 
 .toggle.is-on::before {
@@ -652,7 +708,7 @@ button {
   height: 8px;
   border-radius: 50%;
   background: var(--edge-strong);
-  box-shadow: inset 0 0 0 1px var(--ink);
+  box-shadow: inset 0 0 0 1px var(--shadow-ink);
 }
 
 .notify.is-listening::before {
@@ -697,13 +753,24 @@ button {
   opacity: 0.6;
 }
 
-/* ---- content width: Normal / Wide / Full, per tab; the bars above keep theirs ---- */
+/* ---- content width: Normal / Wide / Full, per tab; the panel with the tabs and filters follows, so its edges
+   stay in line with the cards under it ---- */
 
 .feed[data-width="wide"] {
   max-width: 1840px;
 }
 
 .feed[data-width="full"] {
+  max-width: none;
+}
+
+.tabs[data-width="wide"] .tabs-inner,
+.filters[data-width="wide"] .filters-inner {
+  max-width: 1800px;
+}
+
+.tabs[data-width="full"] .tabs-inner,
+.filters[data-width="full"] .filters-inner {
   max-width: none;
 }
 
@@ -783,12 +850,27 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 300px;
+  /* As wide as its longest choice needs, so a longer translation never runs out of the panel. */
+  width: max-content;
+  min-width: 300px;
+  max-width: calc(100vw - 24px);
   padding: 14px;
   background: var(--card);
   border: 1px solid var(--edge-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+/* Segments of one width, the width of the longest label. */
+.view-panel .segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+.view-panel .segmented button {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .view-row {
@@ -892,7 +974,7 @@ button {
   min-height: 0;
   overflow: hidden;
   padding: 0;
-  background: var(--ink);
+  background: var(--media-bg);
   border: 0;
   cursor: zoom-in;
 }
@@ -1124,74 +1206,48 @@ button {
   font-size: 13px;
 }
 
-/* The full card of a Done slot, opened from its tile: the card is the dialog, the panel under it pages through Done. */
-.detail-view {
+/* The full card of a Done slot, opened from its tile, laid out as the lightbox: the card on the stage, the strip
+   of every Done slot and the bar under it. The card scrolls inside the stage, so the strip and bar stay put. */
+.detail-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.detail-stage > .card {
   width: min(1200px, 100%);
   max-height: 100%;
-}
-
-.detail-view > .card {
-  width: 100%;
-  min-height: 0;
   overflow: auto;
-  box-shadow: 6px 6px 0 var(--ink);
+  box-shadow: 6px 6px 0 var(--shadow-ink);
 }
 
-.detail-view .card-head {
+/* While one version folds into another, the scrollbar stays as it was: none appears or goes mid-change, so the
+   width holds still. Once the folds settle, it follows the content again. */
+.detail-stage > .card.is-switching {
+  overflow-y: hidden;
+}
+
+.detail-stage > .card.is-switching.has-bar {
+  overflow-y: scroll;
+}
+
+.detail-stage .card-head {
   position: sticky;
   top: 0;
   z-index: 2;
   background: color-mix(in srgb, var(--tone) 6%, var(--card));
 }
 
-.detail-view .card-head .modal-close {
-  margin-left: 4px;
-}
-
-/* Pinned to the bottom edge of the screen; the overlay keeps room for it so the card never sits under it. */
-.detail-overlay:has(.detail-dock) {
-  padding-bottom: 168px;
-}
-
-.detail-dock {
-  position: fixed;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: min(1000px, 100%);
-  padding: 10px 0 8px;
-  background: var(--card);
-  border: 1px solid var(--edge-strong);
-  border-bottom: 0;
-  border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -6px 24px rgb(0 0 0 / 0.35);
-}
-
-.detail-nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.detail-strip {
-  display: flex;
+/* Many Done slots run off the sides: centred while they fit, scrolled from the start once they do not. */
+.detail-overlay .lightbox-strip {
   justify-content: safe center;
-  gap: 10px;
-  width: 100%;
-  padding: 2px 14px 6px;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 
-.detail-strip .lightbox-thumb-name {
+.detail-overlay .lightbox-thumb-name {
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1224,9 +1280,6 @@ button {
 .filter-waiting_input {
   --tone: var(--faint);
 }
-.filter-approved {
-  --tone: var(--approved);
-}
 
 .filter-count.is-hot {
   background: var(--generate);
@@ -1255,7 +1308,7 @@ button {
 
 .filter:hover {
   color: var(--text);
-  border-color: #605c69;
+  border-color: var(--edge-hover);
 }
 
 .filter.is-on {
@@ -1266,7 +1319,7 @@ button {
 }
 
 .filter.is-on .filter-count {
-  background: var(--ink);
+  background: var(--well);
   color: var(--tone);
 }
 
@@ -1401,14 +1454,6 @@ button {
   color: var(--text);
 }
 
-.card-thumb {
-  width: 40px;
-  height: 24px;
-  object-fit: cover;
-  border: var(--line);
-  border-radius: 3px;
-}
-
 .card-tools {
   margin-left: auto;
   display: flex;
@@ -1540,7 +1585,7 @@ button {
   position: relative;
   display: flex;
   justify-content: center;
-  background: var(--ink);
+  background: var(--media-bg);
 }
 
 .mediabox-open {
@@ -1644,7 +1689,7 @@ button {
   width: 64px;
   height: 64px;
   padding: 0;
-  background: var(--ink);
+  background: var(--media-bg);
   border: 1px solid var(--edge);
   border-radius: 4px;
   overflow: hidden;
@@ -1679,7 +1724,7 @@ button {
   height: 16px;
   border-radius: 50%;
   background: var(--text);
-  color: var(--ink);
+  color: var(--on-tone);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -1843,7 +1888,7 @@ button {
 
 /* The setting easiest to miss in the generator. */
 .spec-strong {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .mediabox-icon.is-image {
@@ -1912,28 +1957,27 @@ button {
   font-size: 12px;
 }
 
-.inputs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
+/* One input: picture, title over a line of detail, copy actions at the end. Every tile has this shape, frames
+   and references alike, so a row of them reads as one set. */
 .input {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 6px 12px 6px 6px;
+  min-height: 54px;
+  padding: 6px;
   background: var(--well);
   border: var(--line);
   border-radius: var(--radius);
 }
 
 .input-thumb {
-  flex: none;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  background: var(--ink);
+  background: var(--media-bg);
   border: var(--line);
   border-radius: 4px;
   overflow: hidden;
@@ -1953,37 +1997,84 @@ button {
   align-items: center;
   justify-content: center;
   color: var(--faint);
-  font: 700 20px/1 var(--display);
+  font: 700 17px/1 var(--display);
   cursor: default;
 }
 
 .input-body {
   min-width: 0;
-  font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
-.input-role {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.input-source {
-  color: var(--muted);
-  max-width: 220px;
+.input-title,
+.input-detail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.input-missing,
-.input-unapproved {
+.input-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.input-detail {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.input-warning {
   color: var(--generate);
 }
 
 .input-actions {
   display: flex;
-  gap: 10px;
+  gap: 2px;
+}
+
+.input-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--faint);
+}
+
+.input-action:hover,
+.input-action:focus-visible {
+  background: var(--card-hover);
+  color: var(--text);
+}
+
+/* With a pointer, the actions wait at the end of the tile until it is pointed at, over a fade, so the name
+   gets the whole width; on a touch screen they stay in the row. */
+@media (hover: hover) {
+  .input {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .input-actions {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    padding-left: 18px;
+    background: linear-gradient(90deg, transparent, var(--well) 16px);
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .input:hover .input-actions,
+  .input:focus-within .input-actions {
+    opacity: 1;
+  }
 }
 
 .feedback,
@@ -2093,10 +2184,6 @@ button {
 
 .notice-error {
   --tone: var(--error);
-}
-
-.notice-warn {
-  --tone: var(--generate);
 }
 
 /* Status chips (agent review, warnings) that open their text in a panel. */
@@ -2232,6 +2319,11 @@ button {
   transform: rotate(90deg);
 }
 
+/* Pointing up: the thing under it folds away upward. */
+.chevron.is-up {
+  transform: rotate(-90deg);
+}
+
 .older-thumb {
   width: 32px;
   height: 32px;
@@ -2311,7 +2403,7 @@ main.blank {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgb(10 9 12 / 0.72);
+  background: var(--scrim);
 }
 
 .modal {
@@ -2321,7 +2413,7 @@ main.blank {
   background: var(--card);
   border: 1px solid var(--edge-strong);
   border-radius: var(--radius);
-  box-shadow: 6px 6px 0 var(--ink);
+  box-shadow: 6px 6px 0 var(--shadow-ink);
 }
 
 .modal-wide {
@@ -2562,7 +2654,7 @@ main.blank {
   z-index: 1;
   padding: 3px 12px 4px 10px;
   background: var(--pick);
-  color: var(--ink);
+  color: var(--on-tone);
   border-radius: 0 0 8px 0;
   font-weight: 700;
   font-size: 13px;
@@ -2596,7 +2688,7 @@ main.blank {
   display: block;
   width: 96px;
   height: 60px;
-  background: var(--ink);
+  background: var(--media-bg);
   border: 1px solid var(--edge);
   border-radius: 4px;
   overflow: hidden;
@@ -2634,7 +2726,7 @@ main.blank {
   height: 18px;
   border-radius: 50%;
   background: var(--pick);
-  color: var(--ink);
+  color: var(--on-tone);
   font-size: 11px;
   font-weight: 800;
   line-height: 18px;
@@ -2788,13 +2880,27 @@ main.blank {
   min-width: 0;
 }
 
+/* What was copied, under the message: smaller and plainer, cut after two lines (the toast's title holds it all). */
+.toast-detail {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--muted);
+  font: 400 12px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
 .toast-undo {
   flex: none;
   padding: 2px 10px;
   background: none;
   border: 1px solid var(--edge-strong);
   border-radius: 4px;
-  color: var(--primary);
+  color: var(--primary-text);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -2997,9 +3103,6 @@ video.is-loading {
 
 /* ---- compact cards in progress: less padding, smaller media, shorter prompt, so more cards fit ---- */
 
-.feed.is-compact {
-  gap: 10px;
-}
 
 .feed.is-compact .card {
   box-shadow: var(--shadow-small);
@@ -3078,7 +3181,7 @@ video.is-loading {
 
 .tour-overlay {
   z-index: 60;
-  background: rgb(10 9 12 / 0.82);
+  background: var(--scrim-strong);
 }
 
 /*
@@ -3094,7 +3197,7 @@ video.is-loading {
   background: var(--card);
   border: 1px solid var(--edge-strong);
   border-radius: 8px;
-  box-shadow: 8px 8px 0 var(--ink);
+  box-shadow: 8px 8px 0 var(--shadow-ink);
 }
 
 /* On a screen too short for all of it the dialog scrolls; its parts keep their height. */
@@ -3128,7 +3231,7 @@ video.is-loading {
 .tour-stage {
   padding: 14px;
   background:
-    radial-gradient(circle, #2b2832 1px, transparent 1.5px) 0 0 / 14px 14px,
+    radial-gradient(circle, var(--stage-dot) 1px, transparent 1.5px) 0 0 / 14px 14px,
     var(--well);
   border-bottom: var(--line);
 }
@@ -3229,7 +3332,7 @@ video.is-loading {
 .tour-kicker {
   display: inline-flex;
   gap: 8px;
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
@@ -3519,14 +3622,19 @@ video.is-loading {
   line-clamp: 2;
 }
 
-/* The pictures share the card's colour, so the empty sides of a scaled-down picture do not show. */
+/* Each picture on a plate of its own ground (the colour the pictures are drawn on, the same in both themes),
+   across the card's top: a scaled-down picture's empty sides are plate, never the card, and a little air above and
+   below keeps the drawing off the edges. */
 .tour-why-art {
   flex: 1 1 0;
   min-height: 3em;
   width: calc(100% + 1.8em);
   max-height: 11em;
   margin: 0 -0.9em 0.55em;
+  padding: 0.6em 0.9em;
   object-fit: contain;
+  image-rendering: pixelated;
+  background: #25242b;
   border-bottom: 1px solid var(--edge);
 }
 
@@ -3573,7 +3681,7 @@ video.is-loading {
   background: color-mix(in srgb, var(--primary) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
   border-radius: var(--radius);
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .tour-extra-icon .icon {
@@ -3830,7 +3938,7 @@ video.is-loading {
   4%,
   22% {
     border-color: var(--tone);
-    box-shadow: 7px 7px 0 var(--ink);
+    box-shadow: 7px 7px 0 var(--shadow-ink);
     transform: translate(-3px, -3px);
   }
 }
@@ -3845,7 +3953,7 @@ video.is-loading {
   4%,
   22% {
     background: var(--tone);
-    color: var(--ink);
+    color: var(--on-tone);
   }
 }
 
@@ -3874,7 +3982,7 @@ video.is-loading {
   color: var(--text);
   border: 1px solid var(--edge-strong);
   border-radius: 5px;
-  box-shadow: 1px 1px 0 var(--ink);
+  box-shadow: 1px 1px 0 var(--shadow-ink);
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -3905,13 +4013,17 @@ video.is-loading {
 }
 
 .modal {
-  box-shadow: inset 0 1px 0 var(--hi-strong), 6px 6px 0 var(--ink), 0 24px 48px -24px rgb(0 0 0 / 0.8);
+  box-shadow: inset 0 1px 0 var(--hi-strong), 6px 6px 0 var(--shadow-ink), 0 24px 48px -24px rgb(0 0 0 / 0.8);
 }
 
 .btn,
 .split,
 .toggle {
   box-shadow: inset 0 1px 0 var(--hi), var(--shadow-small);
+}
+
+.toggle.is-on {
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--shadow-ink) 60%, transparent);
 }
 
 .filter {
@@ -3928,7 +4040,7 @@ video.is-loading {
   height: 22px;
   border-radius: 6px;
   border-color: #d8d6dc;
-  box-shadow: inset 0 1px 0 #fff, 1px 1px 0 var(--ink);
+  box-shadow: inset 0 1px 0 #fff, 1px 1px 0 var(--shadow-ink);
 }
 
 .tool-logo img {
@@ -4118,13 +4230,24 @@ body::before {
   }
 
   .card:hover {
-    border-color: #58545f;
-    box-shadow: inset 0 1px 0 var(--hi-strong), 5px 5px 0 var(--ink), var(--shadow-soft);
+    border-color: var(--edge-hover);
+    box-shadow: inset 0 1px 0 var(--hi-strong), 5px 5px 0 var(--shadow-ink), var(--shadow-soft);
   }
 }
 
-/* 11. A card that leaves the list (filtered out, moved to Done, deleted) folds up and slides away before the
-   others close the gap, so a change is seen as that card going, never as another one taking its place. */
+/* 11. A card that leaves the list (filtered out, moved to Done, deleted) fades and shrinks a little, then
+   folds up, and the others close the gap; one that joins grows into place, pushing the others along, and fades
+   in once there is room. Tiles in the Done grid fade and scale; the others slide to their new places (useFlip).
+   Leaving and entering mirror each other, so nothing ever jumps. */
+.feed {
+  --feed-gap: 24px;
+  gap: var(--feed-gap);
+}
+
+.feed.is-compact {
+  --feed-gap: 10px;
+}
+
 .card-wrap {
   display: grid;
   /* The column is the feed's width, never the content's: a long one-line text must not widen the card. */
@@ -4143,33 +4266,123 @@ body::before {
 
 @media (prefers-reduced-motion: no-preference) {
   .card-wrap {
+    transform-origin: 50% 0;
     transition:
-      grid-template-rows 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.3s ease,
-      transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-      margin-bottom 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 0.22s ease,
+      transform 0.3s cubic-bezier(0.4, 0, 1, 1),
+      grid-template-rows 0.38s cubic-bezier(0.4, 0, 0.2, 1) 0.08s,
+      margin-bottom 0.38s cubic-bezier(0.4, 0, 0.2, 1) 0.08s;
   }
 
   .card-wrap.is-leaving {
     grid-template-rows: 0fr;
-    margin-bottom: -24px;
+    /* Takes the gap with it, so the cards below close up exactly as far as the card took. */
+    margin-bottom: calc(-1 * var(--feed-gap));
     opacity: 0;
-    transform: translateX(32px) scale(0.98);
+    transform: scale(0.97);
     pointer-events: none;
   }
 
-  .card-wrap.is-leaving > .card {
+  .card-wrap.is-leaving > .card,
+  .card-wrap.is-entering > .card {
     overflow: hidden;
   }
 
+  /* The room opens first, then the card fades in, a touch above its place, and settles. Chosen by is-arrived,
+     which stays while the element lives: is-entering goes once the entry is over, and if the animation were
+     tied to it, the card's own rise would take its place then and play, a blink. */
+  .card-wrap.is-arrived {
+    animation: card-grow 0.42s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+  }
+
+  .feed > .card-wrap.is-arrived > .card {
+    animation: card-arrive 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.14s backwards;
+  }
+
   .tile-wrap {
-    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.24s ease, transform 0.34s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .tile-wrap.is-leaving {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.9);
     pointer-events: none;
+  }
+
+  .tile-wrap.is-arrived {
+    animation: tile-arrive 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s backwards;
+  }
+
+  /* The grid rises in like the feed when the tab opens; an arriving tile has its own entry instead. */
+  .done-grid > .tile-wrap > .tile {
+    animation: card-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .done-grid > .tile-wrap:nth-child(2) > .tile {
+    animation-delay: 40ms;
+  }
+  .done-grid > .tile-wrap:nth-child(3) > .tile {
+    animation-delay: 80ms;
+  }
+  .done-grid > .tile-wrap:nth-child(4) > .tile {
+    animation-delay: 120ms;
+  }
+  .done-grid > .tile-wrap:nth-child(5) > .tile {
+    animation-delay: 160ms;
+  }
+  .done-grid > .tile-wrap:nth-child(n + 6) > .tile {
+    animation-delay: 200ms;
+  }
+
+  .done-grid > .tile-wrap.is-arrived > .tile {
+    animation: none;
+  }
+
+  /* An empty view fades in, its picture rising a little after, then the words. */
+  .feed > .blank {
+    animation: blank-in 0.4s ease backwards;
+  }
+
+  .feed > .blank > .empty-art {
+    animation: art-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.06s backwards;
+  }
+
+  .feed > .blank > :not(.empty-art) {
+    animation: blank-in 0.4s ease 0.16s backwards;
+  }
+}
+
+@keyframes card-grow {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: calc(-1 * var(--feed-gap));
+  }
+}
+
+@keyframes card-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+@keyframes tile-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes blank-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes art-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
   }
 }
 
@@ -4198,8 +4411,9 @@ body::before {
   overflow: hidden;
 }
 
-/* Settled and open: unclipped, so a popover or a tooltip inside can reach past the edge. */
-.fold.is-settled .fold-inner {
+/* Settled and open: unclipped, so a popover or a tooltip inside can reach past the edge. Only its own content: a
+   fold moving inside a settled one stays clipped, or its whole height would overflow the scroller around it. */
+.fold.is-settled > .fold-inner {
   overflow: visible;
 }
 
@@ -4373,6 +4587,8 @@ body::before {
 /* 15. The language menu in the top bar. */
 .lang {
   position: relative;
+  /* A flex box, not a block: a block would add the inline gap under the button and push it off centre. */
+  display: flex;
 }
 
 .lang-code {
@@ -4409,16 +4625,6 @@ body::before {
   background: var(--well);
   border: var(--line);
   border-radius: var(--radius);
-}
-
-.gen-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 600;
 }
 
 .gen-panel .field input,
@@ -4469,14 +4675,14 @@ body::before {
 }
 
 .chip:hover {
-  border-color: #58545f;
+  border-color: var(--edge-hover);
   color: var(--text);
 }
 
 .chip.is-on {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-  color: var(--primary);
+  color: var(--primary-text);
   font-weight: 600;
 }
 
@@ -4509,7 +4715,7 @@ body::before {
   background: var(--card);
   border: 1px solid var(--edge-strong);
   border-radius: 6px;
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -4521,56 +4727,42 @@ body::before {
   font-weight: 500;
 }
 
-.unit-input {
-  position: relative;
-  max-width: 140px;
-}
-
-.unit-input input {
-  width: 100%;
-  padding-right: 28px;
-}
-
-.unit-input .unit {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--faint);
-  font-size: 13px;
-  pointer-events: none;
-}
-
-/* 17. A collapsed card keeps its brief and a larger thumbnail in one quiet row under the head. */
+/* 17. The brief under the head is one element in both states. Open: a line of text. Folded: the same text with
+   the newest result beside it, and a click on it opens the card; the thumbnail fades in once the fold has shut. */
 .card.is-collapsed.has-summary .card-head {
   border-bottom: 1px solid color-mix(in srgb, var(--tone) 18%, var(--edge));
   border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 
-.card-summary {
+.card-brief {
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 10px 16px;
-  background: none;
-  border: 0;
+  gap: 0;
+  border-bottom: var(--line);
+}
+
+.card-brief .card-description {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  border-bottom: 0;
+}
+
+.card-brief.is-summary {
+  border-bottom: 0;
   border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
-  color: var(--muted);
-  font: inherit;
-  font-size: 14px;
-  text-align: left;
   cursor: pointer;
 }
 
-.card-summary:hover {
+.card-brief.is-summary:hover {
   background: var(--card-hover);
+}
+
+.card-brief.is-summary:hover .card-description {
   color: var(--text);
 }
 
-.card-summary p {
-  margin: 0;
-  min-width: 0;
+.card-brief.is-summary .card-description {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -4582,20 +4774,30 @@ body::before {
   flex: none;
   width: 96px;
   height: 60px;
+  margin: 8px 0 8px 16px;
   object-fit: cover;
   border: var(--line);
   border-radius: 4px;
-  box-shadow: 1px 1px 0 var(--ink);
+  box-shadow: 1px 1px 0 var(--shadow-ink);
 }
 
-.feed.is-compact .card-summary {
-  padding: 6px 10px;
-  gap: 10px;
+@media (prefers-reduced-motion: no-preference) {
+  .card-summary-thumb {
+    animation: thumb-in 0.25s ease 0.3s both;
+  }
+}
+
+@keyframes thumb-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .feed.is-compact .card-summary-thumb {
   width: 64px;
   height: 40px;
+  margin: 6px 0 6px 10px;
 }
 
 /* 18. The first load: the bars and the feed as ghosts, in the page's own shape, until the state arrives. */
@@ -4623,72 +4825,45 @@ body::before {
   margin-bottom: -1px;
 }
 
-/* 19. Inputs in two groups: the frames of the clip in a strip, start to end on a track, and the references apart.
-   The same tiles as everywhere, on the well, so nothing new has to be learnt; only the track says "this is a clip". */
+/* 19. Inputs in two groups: the frames of the clip in a row, start to end on a track, and the references in a
+   grid. The same tile in both, so nothing new has to be learnt; only the track says "this is a clip". */
 .input-groups {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .input-group-label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
 }
 
+/* Frames share the row evenly, so start and end are the same size whatever their names. */
 .clip {
-  position: relative;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   gap: 8px 0;
-  padding: 8px 10px;
-  background: var(--well);
-  border: var(--line);
-  border-radius: var(--radius);
 }
 
-/* The frame tiles are the same size as the reference tiles, so the strip and the grid balance. */
 .clip > .input {
-  gap: 8px;
-  padding: 5px 8px 5px 5px;
-  background: var(--card);
-}
-
-.clip > .input .input-thumb {
-  width: 40px;
-  height: 40px;
-}
-
-.clip > .input .input-body {
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.clip > .input .input-source {
-  max-width: 160px;
-}
-
-.clip > .input .input-actions {
-  flex-wrap: wrap;
-  gap: 2px 8px;
-}
-
-.clip > .input .input-actions .link {
-  padding: 0;
-  font-size: 12px;
+  flex: 1 1 0;
+  min-width: 200px;
+  max-width: 320px;
 }
 
 /* The track between the frames: the clip itself, drawn as a dotted line with a dot at each end. */
 .clip-track {
   position: relative;
-  flex: 1 1 36px;
-  min-width: 36px;
+  flex: 1 1 40px;
+  min-width: 40px;
+  max-width: 120px;
   height: 2px;
-  margin: 0 6px;
+  margin: 0 8px;
+  align-self: center;
   background-image: radial-gradient(circle, var(--edge-strong) 1px, transparent 1.5px);
   background-size: 6px 2px;
   background-repeat: repeat-x;
@@ -4725,45 +4900,790 @@ body::before {
   display: none;
 }
 
-/* References: small tiles in a grid, three or more to a row in the card's column; the file name is the label,
-   since the group's title already says what they are. A role that is not "reference" (video, audio) stays. */
-.inputs.is-compact {
+.inputs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 8px;
 }
 
-.inputs.is-compact .input {
-  gap: 8px;
-  padding: 5px 8px 5px 5px;
+/* 20. Adding a finished asset: the drop zone of the dialog, and the note a ready-made version shows on its card. */
+.final-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--well);
+  border: 1px dashed var(--edge-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.inputs.is-compact .input-thumb {
-  width: 40px;
-  height: 40px;
+.final-drop.is-over {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--well));
 }
 
-.inputs.is-compact .input-body {
-  font-size: 12px;
-  line-height: 1.4;
+.final-drop.has-file {
+  border-style: solid;
 }
 
-.inputs.is-compact .input.is-reference .input-role {
-  display: none;
+/* Empty: the whole area chooses a file, like an empty result box on a card; Paste image sits under it. */
+.final-drop-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 150px;
+  padding: 24px 20px 12px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
 }
 
-.inputs.is-compact .input-source {
-  max-width: none;
+.final-drop-empty strong {
   color: var(--text);
-  font-weight: 500;
+  font: 600 17px/1.3 var(--display);
 }
 
-.inputs.is-compact .input-actions {
+.final-drop-empty:hover strong,
+.final-drop.is-over .final-drop-empty strong {
+  color: var(--primary-text);
+}
+
+.final-drop-kinds {
+  display: flex;
+  gap: 8px;
+}
+
+.final-drop-actions {
+  display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px 20px;
 }
 
-.inputs.is-compact .input-actions .link {
+/* With a file: the picture (click it to choose another), then its name and what else can be done. */
+.final-drop-preview {
+  display: flex;
+  justify-content: center;
+  width: 100%;
   padding: 0;
+  background: var(--media-bg);
+  border: 0;
+  border-radius: 0;
+}
+
+.final-drop-preview img,
+.final-drop-preview video {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+
+.final-drop-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border-top: var(--line);
+  font-size: 13px;
+}
+
+.final-drop-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+}
+
+.ready-made {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--well);
+  border: var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ready-made .icon {
+  color: var(--approved);
+}
+
+/* 21. Delete for good in the trash dialog. */
+.trash-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+}
+
+.btn-danger {
+  --tone: var(--error);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+  color: var(--tone);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 60%, transparent);
+}
+
+.trash-empty-all {
+  margin-left: auto;
+}
+
+/* 22. Three surfaces, each its own: the top bar, darkest, over everything; under it one toolbar for the views and
+   the filters, lighter than the page, floating as a panel exactly as wide as the cards; then the dotted ground
+   with the cards. Each surface ends in a hard edge and a shadow onto the one below. */
+:root {
+  --bar: #121016;
+  --deck: #26242b;
+  --deck-edge: #332f3a;
+}
+
+.topbar {
+  border-bottom: 1px solid var(--bar-edge);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 12px 24px -12px var(--drop);
+}
+
+/* The bars only hold the page gutter; the panel is their inner part, at the cards' width (1240 less the gutters). */
+.tabs,
+.filters {
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0 20px;
+  background: none;
+  border: 0;
+}
+
+.tabs {
+  position: relative;
+  z-index: 2;
+  padding-top: 16px;
+}
+
+.tabs-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 6px 14px 0;
+  background: var(--deck);
+  border: 1px solid var(--deck-edge);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 14px 24px -14px var(--drop);
+}
+
+/* With the filters under it, the two rows read as one panel: the tabs keep the top, the filters the bottom. */
+.tabs:has(+ .filters) .tabs-inner {
+  border-radius: 10px 10px 0 0;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.filters {
+  position: relative;
+  z-index: 1;
+}
+
+.filters-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 14px 14px;
+  background: var(--deck);
+  border: 1px solid var(--deck-edge);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 1px 0 var(--bar-edge), 0 14px 24px -14px var(--drop);
+}
+
+/* The filter pills sit in the toolbar as pressed-in controls: the well's colour, the chosen one lit. */
+.filter {
+  background: var(--well);
+  border-color: var(--deck-edge);
+  box-shadow: none;
+}
+
+.filter:hover {
+  border-color: var(--edge-strong);
+}
+
+.filter.is-on {
+  background: var(--tint);
+  border-color: var(--tint-edge);
+  box-shadow: none;
+}
+
+.tabs-tools > .view-button {
+  margin-bottom: 6px;
+}
+
+.tab {
+  margin-bottom: -1px;
+  padding: 9px 12px 11px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  position: relative;
+}
+
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.tab:hover::after {
+  background: var(--edge-strong);
+}
+
+.tab.is-on {
+  background: none;
+  border: 0;
+  color: var(--text);
+}
+
+.tab.is-on::after {
+  background: var(--primary);
+}
+
+.tab .filter-count {
+  background: var(--well);
+  border: 1px solid var(--deck-edge);
+  color: var(--muted);
+  line-height: 18px;
+}
+
+.tab.is-on .filter-count {
+  border-color: var(--edge-strong);
+  color: var(--text);
+}
+
+.tab .filter-count.is-hot {
+  background: var(--generate);
+  border-color: var(--generate);
+  color: var(--on-primary);
+}
+
+.feed {
+  padding-top: 24px;
+}
+
+@media (max-width: 560px) {
+  .tabs,
+  .filters {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .tabs-inner,
+  .filters-inner {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+/* 25. The top bar: a dark glass surface with a light that follows the pointer, a thread of the app's colours
+   along its lower edge that lights up once when the page opens, and a brand mark that glows under the hand. */
+.topbar {
+  position: sticky;
+  background:
+    radial-gradient(520px 90px at var(--mx, -999px) var(--my, 50%), rgb(217 164 65 / 0.13), transparent 70%),
+    radial-gradient(900px 140px at 50% 120%, rgb(192 138 181 / 0.08), transparent 70%),
+    var(--topbar-fill);
+  background-color: var(--bar);
+}
+
+/* The grain, so the glass is not flat. */
+.topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain-faint);
+  pointer-events: none;
+}
+
+/* The thread along the lower edge: the agent's violet, the app's mustard, the image teal; lit once on load. */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--agent) 0%, var(--primary) 45%, var(--image) 100%);
+  background-size: 200% 100%;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .topbar::after {
+    animation: thread-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+@keyframes thread-in {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+    background-position: 100% 0;
+  }
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+    background-position: 0 0;
+  }
+}
+
+/* The brand: the mark glows and lifts a little under the pointer; the name gets its light. */
+.brand {
+  position: relative;
+  transition: filter 0.3s ease;
+}
+
+.brand:hover {
+  filter: drop-shadow(0 0 10px rgb(217 164 65 / 0.45));
+}
+
+.brand-name {
+  background: linear-gradient(90deg, var(--text), var(--brand-fade));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The bar's controls stand on glass: a touch more transparent, lit along the top. */
+.topbar .btn,
+.topbar .toggle,
+.topbar .workspace-button {
+  background: var(--glass);
+  backdrop-filter: blur(6px);
+}
+
+.topbar .btn:hover,
+.topbar .toggle:hover {
+  background: var(--glass-hover);
+}
+
+/* Not glass while latched: the deeper surface is what says it is on. */
+.topbar .toggle.is-on {
+  background: var(--well);
+}
+
+/* 26. A tooltip that is only a name: smaller, no mark, like a label. */
+.tip.is-name {
+  padding: 4px 9px 5px;
   font-size: 12px;
+  color: var(--muted);
+}
+
+/* 27. The light theme: the same neo-brutalist chrome on warm paper. Hard shadows stay in dark ink, the status
+   tones go a step deeper so they read on white, and the lightbox stays dark: pictures are judged on dark. Set by
+   data-theme on <html> (Theme.tsx); without a choice, the system's preference picks (index.html). */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --page: #f3efe7;
+  --bar: #fbf9f5;
+  --card: #fffdf9;
+  --card-hover: #f7f3ec;
+  --well: #eee9e0;
+  --ink: #2a2630;
+
+  --edge: #ded7cb;
+  --edge-strong: #c8c0b3;
+  --edge-hover: #a9a093;
+  --btn-hover: #f1ece3;
+
+  --text: #221f27;
+  --muted: #5f5969;
+  --faint: #8b8494;
+
+  --generate: #b07a12;
+  --review: #33739f;
+  --agent: #94528a;
+  --approved: #3f8139;
+  --error: #bf4a36;
+  --image: #23857a;
+  --video: #c25f2c;
+
+  /* The same gold, a lighter and clearer tone for paper; as text it goes deeper, to be read on white. */
+  --primary: #f2bf55;
+  --primary-hover: #f6cb6f;
+  --on-primary: #2b1d04;
+  --primary-text: #a26f0c;
+  --on-tone: #221f27;
+
+  /* Hard shadows in a warm grey rather than black: the same offset shapes, lighter on paper. */
+  --shadow-ink: #cbc1b1;
+
+  --media-bg: #e4ded3;
+  --scrim: rgb(42 36 30 / 0.42);
+  --scrim-strong: rgb(30 26 22 / 0.7);
+  --drop: rgb(70 56 40 / 0.18);
+  --bar-edge: var(--edge-strong);
+  --glass: rgb(255 253 249 / 0.85);
+  --glass-hover: rgb(247 243 236 / 0.95);
+  --stage-dot: #d6cfc2;
+  --brand-fade: #6a6374;
+  --topbar-fill: linear-gradient(180deg, #fffdf9, #f6f2ea);
+  --deck: #fbf9f5;
+  --deck-edge: #e6dfd3;
+  --hi: rgb(255 255 255 / 0.9);
+  --hi-strong: rgb(255 255 255 / 1);
+  --shadow-soft: 0 12px 28px -16px rgb(70 56 40 / 0.25);
+}
+
+/* Inside an empty view's hole the ground is dark in both themes: the pictures carry it as their own. On paper the
+   view is cut to the hole's torn outline itself, so no layer of paper has to be laid over the page around it,
+   where its edge would show; the torn side is the band left between that outline and the hole, a shade of the
+   paper, and its shadow falls into the hole for the depth. */
+/* Wider than the hole only; a phone shows the picture as a print, below. */
+@media (min-width: 601px) {
+  :root[data-theme="light"] .blank-center {
+    background: #1d1b21;
+    clip-path: polygon(calc(50% + 313px) 50.0%, calc(50% + 305px) 54.6%, calc(50% + 295px) 59.1%, calc(50% + 310px) 64.7%, calc(50% + 293px) 69.2%, calc(50% + 288px) 74.9%, calc(50% + 251px) 77.8%, calc(50% + 215px) 80.3%, calc(50% + 177px) 82.1%, calc(50% + 153px) 86.4%, calc(50% + 108px) 85.7%, calc(50% + 76px) 88.7%, calc(50% + 37px) 87.6%, calc(50% + -0px) 88.0%, calc(50% + -34px) 84.6%, calc(50% + -68px) 84.6%, calc(50% + -98px) 82.2%, calc(50% + -151px) 86.0%, calc(50% + -184px) 83.4%, calc(50% + -231px) 82.5%, calc(50% + -257px) 78.4%, calc(50% + -279px) 74.1%, calc(50% + -291px) 69.1%, calc(50% + -312px) 64.8%, calc(50% + -313px) 59.7%, calc(50% + -330px) 55.0%, calc(50% + -326px) 50.0%, calc(50% + -326px) 45.0%, calc(50% + -304px) 40.6%, calc(50% + -304px) 35.6%, calc(50% + -285px) 31.3%, calc(50% + -270px) 26.7%, calc(50% + -246px) 22.7%, calc(50% + -227px) 18.0%, calc(50% + -189px) 15.7%, calc(50% + -156px) 13.0%, calc(50% + -110px) 13.8%, calc(50% + -71px) 13.9%, calc(50% + -34px) 15.0%, calc(50% + -0px) 13.7%, calc(50% + 35px) 14.3%, calc(50% + 74px) 12.5%, calc(50% + 109px) 13.9%, calc(50% + 145px) 15.4%, calc(50% + 179px) 17.5%, calc(50% + 211px) 20.3%, calc(50% + 244px) 23.0%, calc(50% + 283px) 25.6%, calc(50% + 305px) 30.0%, calc(50% + 321px) 34.8%, calc(50% + 332px) 39.8%, calc(50% + 321px) 45.1%, calc(50% + 313px) 50.0%);
+    --text: #e8e4de;
+    --muted: #a49faf;
+  }
+
+  :root[data-theme="light"] .blank-center::before {
+    background: #d4ccbe;
+    filter: drop-shadow(0 3px 2px rgb(0 0 0 / 0.55)) drop-shadow(0 10px 10px rgb(0 0 0 / 0.4));
+  }
+
+  :root[data-theme="light"] .blank-center::after {
+    display: none;
+  }
+}
+
+/* Outside a hole, a picture with its dark ground is set as a print on the page. */
+:root[data-theme="light"] .blank:not(.blank-center) > .empty-art {
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 var(--shadow-ink);
+}
+
+@media (max-width: 600px) {
+  :root[data-theme="light"] .blank-center > .empty-art {
+    border-radius: 8px;
+    box-shadow: 4px 4px 0 var(--shadow-ink);
+  }
+}
+
+/* The lightbox and Details on paper: a light veil, so the picture is shown on the page's own ground. */
+:root[data-theme="light"] .lightbox {
+  background: radial-gradient(ellipse 70% 80% at 50% 45%, rgb(250 248 243 / 0.97), rgb(238 233 224 / 0.97));
+}
+
+/* Counts that call for attention: the bright gold of the buttons, not the deep text tone. */
+:root[data-theme="light"] .filter-count.is-hot,
+:root[data-theme="light"] .tab .filter-count.is-hot {
+  background: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--primary-text));
+  color: var(--on-primary);
+}
+
+/* 28. The theme switch: a pill of sky with the sun or the moon in it. At night the moon sits right among stars
+   that twinkle; by day the sun sits left with clouds drifting past. Flipping it rolls the knob across with a
+   bounce while it turns into the other body, and the new theme spreads over the page as a circle from the switch. */
+.theme-switch {
+  position: relative;
+  flex: none;
+  width: 62px;
+  height: 32px;
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #1c1b3d, #3a2f68);
+  border: 1px solid var(--edge-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow-small);
+  cursor: pointer;
+  isolation: isolate;
+  transition: transform 60ms, box-shadow 60ms;
+}
+
+/* The day sky lies over the night one and fades in, since gradients themselves do not animate. */
+.theme-switch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, #8fd0f5, #cdeeff);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.theme-switch.is-light::before {
+  opacity: 1;
+}
+
+.theme-switch:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--shadow-ink);
+}
+
+.theme-switch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.theme-star,
+.theme-cloud {
+  position: absolute;
+  pointer-events: none;
+  transition: transform 0.55s cubic-bezier(0.5, -0.4, 0.3, 1.4), opacity 0.4s ease;
+}
+
+.theme-star {
+  width: 3px;
+  height: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgb(255 255 255 / 0.9);
+}
+
+.theme-star.s1 {
+  left: 9px;
+  top: 7px;
+}
+
+.theme-star.s2 {
+  left: 19px;
+  top: 18px;
+  width: 2px;
+  height: 2px;
+}
+
+.theme-star.s3 {
+  left: 27px;
+  top: 8px;
+  width: 2px;
+  height: 2px;
+}
+
+.theme-cloud {
+  height: 6px;
+  background: #fff;
+  border-radius: 999px;
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+/* The puff on top of each cloud. */
+.theme-cloud::before {
+  content: "";
+  position: absolute;
+  left: 22%;
+  bottom: 2px;
+  width: 50%;
+  height: 8px;
+  background: inherit;
+  border-radius: 50%;
+}
+
+.theme-cloud.c1 {
+  right: 8px;
+  top: 10px;
+  width: 18px;
+}
+
+.theme-cloud.c2 {
+  right: 19px;
+  top: 20px;
+  width: 12px;
+  transition-delay: 0.06s;
+}
+
+.theme-switch.is-light .theme-star {
+  opacity: 0;
+  transform: translateY(-14px) scale(0.4);
+}
+
+.theme-switch.is-light .theme-cloud {
+  opacity: 0.95;
+  transform: none;
+}
+
+/* The knob: the moon at the right, the sun at the left; it turns half a circle as it rolls, with a bounce. */
+.theme-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fbf7ee, #d9d3c6);
+  box-shadow: inset -3px -2px 0 rgb(0 0 0 / 0.12), 0 0 8px rgb(255 255 255 / 0.35);
+  transform: translateX(30px) rotate(0deg);
+  transition:
+    transform 0.6s cubic-bezier(0.68, -0.4, 0.27, 1.4),
+    background 0.4s ease,
+    box-shadow 0.4s ease;
+}
+
+.theme-switch.is-light .theme-knob {
+  background: radial-gradient(circle at 40% 38%, #fff3b8, #f7b733 70%, #f09a1f);
+  box-shadow: 0 0 10px rgb(255 190 60 / 0.75), 0 0 0 2px rgb(255 214 110 / 0.35);
+  transform: translateX(0) rotate(-180deg);
+}
+
+/* The moon's craters, which the sun does not have. */
+.theme-crater {
+  position: absolute;
+  background: rgb(150 140 125 / 0.45);
+  border-radius: 50%;
+  transition: opacity 0.3s ease, transform 0.4s ease;
+}
+
+.theme-crater.k1 {
+  left: 5px;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+}
+
+.theme-crater.k2 {
+  left: 12px;
+  top: 13px;
+  width: 4px;
+  height: 4px;
+}
+
+.theme-crater.k3 {
+  left: 13px;
+  top: 4px;
+  width: 3px;
+  height: 3px;
+}
+
+.theme-switch.is-light .theme-crater {
+  opacity: 0;
+  transform: scale(0.2);
+}
+
+/* The sun's rays: short beams in a ring around the knob, grown and turning only by day. */
+.theme-rays {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgb(255 214 110 / 0.95) 0deg 12deg, transparent 12deg 45deg);
+  /* A ring just outside the knob (radius 11), so the beams start clear of the sun's edge. */
+  -webkit-mask: radial-gradient(closest-side, transparent 76%, #000 78%, #000 92%, transparent 95%);
+  mask: radial-gradient(closest-side, transparent 76%, #000 78%, #000 92%, transparent 95%);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.35s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.theme-switch.is-light .theme-rays {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .theme-star {
+    animation: theme-twinkle 2.4s ease-in-out infinite;
+  }
+
+  .theme-star.s2 {
+    animation-delay: 0.8s;
+  }
+
+  .theme-star.s3 {
+    animation-delay: 1.5s;
+  }
+
+  .theme-switch.is-light .theme-rays {
+    animation: theme-spin 9s linear infinite;
+  }
+
+  .theme-switch.is-light .theme-cloud.c1 {
+    animation: theme-drift 5s ease-in-out infinite alternate;
+  }
+
+  .theme-switch:hover .theme-knob {
+    box-shadow: inset -3px -2px 0 rgb(0 0 0 / 0.12), 0 0 12px rgb(255 255 255 / 0.65);
+  }
+
+  .theme-switch.is-light:hover .theme-knob {
+    box-shadow: 0 0 14px rgb(255 190 60 / 0.95), 0 0 0 3px rgb(255 214 110 / 0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch *,
+  .theme-switch::before {
+    transition: none;
+  }
+}
+
+@keyframes theme-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes theme-spin {
+  from {
+    transform: scale(1) rotate(0deg);
+  }
+  to {
+    transform: scale(1) rotate(360deg);
+  }
+}
+
+@keyframes theme-drift {
+  to {
+    transform: translateX(-5px);
+  }
+}
+
+/* The page's own change of theme: the new one is revealed as a growing circle (Theme.tsx animates it) over the
+   old one, held still underneath. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 1;
 }

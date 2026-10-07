@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { Result, Slot } from "../shared/types";
 import { type LightboxItem, useApp } from "./context";
-import { useEscape } from "./hooks";
+import { useDialogFocus, useEscape } from "./hooks";
 import { t } from "./i18n";
 import { Icon } from "./icons";
-import { copyImage, copyText } from "./lib";
+import { copyImage, copyText, thumbUrl } from "./lib";
 import { CopyImageButton, Media, SlotNumber, describe } from "./shared";
 import { SlotCard } from "./SlotCard";
 
@@ -38,7 +38,7 @@ export function VariantsList({ slot }: { slot: Slot }) {
             onClick={() => ctx.openLightbox(items, i)}
             aria-label={t("View {file}", { file: c.file })}
           >
-            <Media item={c} />
+            <Media item={c} thumb />
           </button>
           <div className="export-info">
             <span className="export-name" title={c.file}>
@@ -48,12 +48,12 @@ export function VariantsList({ slot }: { slot: Slot }) {
           </div>
           <div className="export-actions">
             {c.kind === "image" && (
-              <button className="btn" onClick={() => ctx.act(() => copyImage(c.url), t("Image copied"))}>
+              <button className="btn" onClick={() => ctx.act(() => copyImage(c.url), { message: t("Image copied"), detail: c.file })}>
                 <Icon name="copyimage" />
                 {t("Copy image")}
               </button>
             )}
-            <button className="link" onClick={() => ctx.act(() => copyText(c.path), t("Path copied"))}>
+            <button className="link" onClick={() => ctx.act(() => copyText(c.path), { message: t("Path copied"), detail: c.path })}>
               {t("Copy path")}
             </button>
           </div>
@@ -69,7 +69,7 @@ export function DoneTile({ slot, onOpen, onDetails }: { slot: Slot; onOpen: () =
   return (
     <article className="tile">
       <button className="tile-media" onClick={onOpen} aria-label={t("View {name}, approved version {n}", { name: slot.name, n: String(slot.approved) })}>
-        {final ? <Media item={final} /> : <span className="tile-missing">{t("No file")}</span>}
+        {final ? <Media item={final} thumb /> : <span className="tile-missing">{t("No file")}</span>}
         {final?.kind === "video" && <span className="tile-play" aria-hidden="true">▶</span>}
         <span className="tile-version" title={t("Approved version {n}", { n: String(slot.approved) })}>
           v{slot.approved}
@@ -103,7 +103,9 @@ export function DetailDialog({ slots, slot, onShow, onClose, paused }: { slots: 
   const many = index >= 0 && slots.length > 1;
   const step = (d: number) => many && onShow(slots[(index + d + slots.length) % slots.length]!.name);
   const strip = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   useEscape(onClose);
+  useDialogFocus(box);
   useEffect(() => {
     if (!many || paused) return;
     const onKey = (e: KeyboardEvent) => {
@@ -121,47 +123,67 @@ export function DetailDialog({ slots, slot, onShow, onClose, paused }: { slots: 
     if (bar && item) bar.scrollTo({ left: item.offsetLeft + item.offsetWidth / 2 - bar.clientWidth / 2, behavior: "smooth" });
   }, [slot.name]);
   const outside = (e: React.MouseEvent) => e.target === e.currentTarget && onClose();
+  const final = finalResult(slot);
+  // Laid out as the lightbox is: the card on the stage, every Done slot in a strip under it, then the bar with
+  // what is showing on the left, the paging in the middle and Close on the right.
   return (
-    <div className="overlay detail-overlay" onMouseDown={outside}>
-      <div className="detail-view" role="dialog" aria-label={t("Details {name}", { name: slot.name })} onMouseDown={outside}>
-        <SlotCard key={slot.name} slot={slot} collapsible={false} onClose={onClose} single />
-        {many && (
-          <nav className="detail-dock" aria-label={t("All done slots")}>
-            <div className="detail-nav">
-              <button className="btn btn-small lightbox-step" onClick={() => step(-1)} aria-label={t("Previous")} title={t("Previous (Left arrow)")}>
+    <div ref={box} tabIndex={-1} className="overlay lightbox detail-overlay" role="dialog" aria-modal="true" aria-label={t("Details {name}", { name: slot.name })} onMouseDown={outside}>
+      <div className="detail-stage" onMouseDown={outside}>
+        <SlotCard key={slot.name} slot={slot} collapsible={false} single />
+      </div>
+      {many && (
+        <div className="lightbox-strip" ref={strip} role="tablist" aria-label={t("All done slots")}>
+          {slots.map((s) => {
+            const thumb = finalResult(s);
+            const current = s.name === slot.name;
+            return (
+              <button
+                key={s.name}
+                role="tab"
+                aria-selected={current}
+                className={`lightbox-thumb${current ? " is-current" : ""}`}
+                onClick={() => onShow(s.name)}
+                title={current ? t("#{number} {name}, showing now", { number: s.number, name: s.name }) : t("#{number} {name}", { number: s.number, name: s.name })}
+              >
+                <span className="lightbox-thumb-media">
+                  {thumb && (thumb.kind === "video" ? <video src={`${thumb.url}#t=0.1`} muted preload="metadata" /> : <img src={thumbUrl(thumb.url)} alt="" loading="lazy" />)}
+                </span>
+                <span className="lightbox-thumb-name">{s.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <footer className="lightbox-bar">
+        <div className="lightbox-info">
+          <div className="lightbox-title">
+            <span className="lightbox-caption">{slot.name}</span>
+            {slot.approved !== null && <span className="card-version">v{slot.approved}</span>}
+          </div>
+          {final && <span className="lightbox-meta">{describe(final, true)}</span>}
+        </div>
+        <div className="lightbox-nav">
+          {many && (
+            <>
+              <button className="btn lightbox-step" onClick={() => step(-1)} aria-label={t("Previous")} title={t("Previous (Left arrow)")}>
                 <Icon name="chevron" className="flip" />
               </button>
               <span className="lightbox-count">
                 {index + 1} / {slots.length}
               </span>
-              <button className="btn btn-small lightbox-step" onClick={() => step(1)} aria-label={t("Next")} title={t("Next (Right arrow)")}>
+              <button className="btn lightbox-step" onClick={() => step(1)} aria-label={t("Next")} title={t("Next (Right arrow)")}>
                 <Icon name="chevron" />
               </button>
-            </div>
-            <div className="detail-strip" ref={strip} role="tablist">
-              {slots.map((s) => {
-                const final = finalResult(s);
-                const current = s.name === slot.name;
-                return (
-                  <button
-                    key={s.name}
-                    role="tab"
-                    aria-selected={current}
-                    className={`lightbox-thumb${current ? " is-current" : ""}`}
-                    onClick={() => onShow(s.name)}
-                    title={current ? t("#{number} {name}, showing now", { number: s.number, name: s.name }) : t("#{number} {name}", { number: s.number, name: s.name })}
-                  >
-                    <span className="lightbox-thumb-media">
-                      {final && (final.kind === "video" ? <video src={`${final.url}#t=0.1`} muted preload="metadata" /> : <img src={final.url} alt="" loading="lazy" />)}
-                    </span>
-                    <span className="lightbox-thumb-name">{s.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+        <div className="lightbox-actions">
+          <button className="btn lightbox-close" onClick={onClose} title={t("Close (Esc)")}>
+            <Icon name="x" size={12} />
+            {t("Close")}
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

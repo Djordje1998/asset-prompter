@@ -1,12 +1,15 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { MAX_UPLOAD_BYTES } from "../shared/types";
 import index from "../web/index.html";
 import { backfill } from "./analysis";
 import { APP_ROOT, CONFIG_PATH, loadConfig } from "./config";
 import { guard, notFound } from "./http";
 import { refreshWatchers, startPings } from "./live";
+import { findTool } from "./media";
 import { loadPresets } from "./preset";
 import { type App, apiRoutes, howTo, projectsOf } from "./routes";
+import { pruneThumbnails } from "./thumbs";
 import { fileLog, useBriefingLog } from "./wake";
 
 const config = loadConfig();
@@ -24,7 +27,8 @@ const server = Bun.serve({
   hostname: HOST,
   port: config.port,
   idleTimeout: 0,
-  maxRequestBodySize: 4 * 1024 ** 3,
+  // One file at the most, plus room for the form around it.
+  maxRequestBodySize: MAX_UPLOAD_BYTES + 1024 ** 2,
   development: process.env.NODE_ENV === "development",
   routes: { "/": index, ...apiRoutes(app, guarded) },
   // Anything no route matched, including a known path with another method.
@@ -32,6 +36,7 @@ const server = Bun.serve({
 });
 
 for (const project of projectsOf(app)) howTo(app, project);
+pruneThumbnails();
 refreshWatchers(projectsDir, config.externalProjects);
 backfill(() => projectsOf(app), app.presets);
 startPings();
@@ -39,7 +44,7 @@ startPings();
 const address = `http://${HOST}:${server.port}`;
 console.log(`Asset Prompter is running at ${address}`);
 console.log(`Projects folder: ${projectsDir}`);
-if (!Bun.which("ffmpeg")) console.log("ffmpeg was not found: videos will work, but no frame sheets are made for agents.");
+if (!findTool("ffmpeg")) console.log("ffmpeg was not found: videos will work, but no frame sheets are made for agents.");
 
 if (config.openBrowser && !process.env.NO_OPEN) {
   const cmd = process.platform === "win32" ? ["cmd", "/c", "start", "", address] : process.platform === "darwin" ? ["open", address] : ["xdg-open", address];

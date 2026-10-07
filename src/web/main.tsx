@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppState, ProjectSummary, Slot, Status, Version } from "../shared/types";
-import { CloneDialog, DeleteProjectDialog, Lightbox, TrashDialog, Modal, SlotTitle, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
+import { type AppState, MAX_UPLOAD_BYTES, type ProjectSummary, type Slot, type Status, type Version } from "../shared/types";
+import { AddFinalDialog, CloneDialog, DeleteProjectDialog, Lightbox, TrashDialog, Modal, SlotTitle, NewProjectDialog, NewSlotDialog, NewVersionDialog, PromptDialog } from "./Dialogs";
 import doneArt from "./art/empty-done.png";
 import agentArt from "./art/empty-filter-agent.png";
 import approvalArt from "./art/empty-filter-approval.png";
@@ -9,18 +9,20 @@ import generatingArt from "./art/empty-filter-generating.png";
 import inputArt from "./art/empty-filter-input.png";
 import progressArt from "./art/empty-in-progress.png";
 import { copiedKey, markPromptCopied } from "./copied";
-import { AppContext, type Ctx, type LightboxItem } from "./context";
+import { AppContext, type Ctx, type LightboxItem, type Notice } from "./context";
 import { DetailDialog, DoneTile, VariantsList, finalResult } from "./Done";
-import { readStored, useLeaving, writeStored } from "./hooks";
+import { readStored, useFlip, useLeaving, writeStored } from "./hooks";
 import { t } from "./i18n";
 import "./sr";
 import { Icon, Logo } from "./icons";
 import { LanguageMenu } from "./Language";
-import { CHANGED_EVENT, STATUS_LABEL, beep, call, copyImage, copyText, enc, humanTurn, onboardingMessage, slotUrl, versionUrl } from "./lib";
+import { chime } from "./chime";
+import { CHANGED_EVENT, STATUS_LABEL, type ServerError, beep, call, copyImage, copyText, enc, fileNameOf, keepSame, onboardingMessage, slotUrl, versionUrl } from "./lib";
 import { ProjectMenu } from "./ProjectMenu";
 import { STATUS_ICON } from "./shared";
 import { SlotCard } from "./SlotCard";
 import { Tooltips } from "./Tooltip";
+import { ThemeSwitch } from "./Theme";
 import { Tutorial } from "./Tutorial";
 import { type Tab, ViewSettings, useViewSettings } from "./ViewSettings";
 
@@ -31,9 +33,19 @@ const FILTERS: Filter[] = ["all", "waiting_generation", "waiting_agent", "waitin
 /** How long a removal can be undone from its toast. */
 const UNDO_MS = 5000;
 
+/** The open project's slots and counts, as /api/projects/:id answers, with the id they belong to. */
+interface ProjectData {
+  project: string;
+  slots: Slot[];
+  listening: number;
+  newApprovals: number;
+  trash: number;
+}
+
 type Dialog =
   | { kind: "project" }
   | { kind: "slot" }
+  | { kind: "final" }
   | { kind: "version"; slot: Slot }
   | { kind: "clone"; slot: Slot }
   | { kind: "prompt"; slot: Slot; version: Version }
@@ -54,7 +66,8 @@ const FILTER_ART: Partial<Record<Filter, string>> = {
 
 /** The pixel-art pictures for empty views, made in the asset-prompter-brand project. */
 function EmptyArt({ done = false, filter = "all" }: { done?: boolean; filter?: Filter }) {
-  return <img className="empty-art" src={done ? doneArt : (FILTER_ART[filter] ?? progressArt)} alt="" width={240} />;
+  // Its height is given too, so the space is kept before the picture loads and nothing under it jumps.
+  return <img className="empty-art" src={done ? doneArt : (FILTER_ART[filter] ?? progressArt)} alt="" width={240} height={done ? 163 : 167} />;
 }
 
 /** Placeholder cards or tiles in the shape of the view, shown while a project's slots load. */
@@ -97,13 +110,11 @@ function LoadingSlots({ tab, perRow }: { tab: Tab; perRow: number }) {
 function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [projectId, setProjectId] = useState<string | null>(readStored("project"));
-  const [slots, setSlots] = useState<Slot[] | null>(null);
-  /** How many agents are waiting on this project's /wait, ready to be woken by Notify agent. */
-  const [listening, setListening] = useState(0);
-  /** Approvals the agent has not been told about; Notify agent sends them with the agent's turns. */
-  const [newApprovals, setNewApprovals] = useState(0);
-  /** Items in the open project's _trash. */
-  const [trashCount, setTrashCount] = useState(0);
+  /**
+   * The last answer about a project's slots, with the project it is about: while another project's answer is
+   * all there is, the open one is still loading, and its view never shows, or animates away, the other's cards.
+   */
+  const [loaded, setLoaded] = useState<ProjectData | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [tab, setTab] = useState<Tab>(readStored("tab") === "done" ? "done" : "progress");
   const view = useViewSettings(tab);
@@ -120,17 +131,32 @@ function App() {
     writeStored("tutorial:seen", "1");
     setTouring(false);
   };
-  const [toast, setToast] = useState<{ message: string; isError: boolean; id: number; undo?: () => void } | null>(null);
+  const [toast, setToast] = useState<{ message: string; detail?: string; isError: boolean; id: number; undo?: () => void } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const pasteTarget = useRef<{ slot: string; n: number } | null>(null);
-  const lastPending = useRef<number | null>(null);
+  /** The newest state request sent, and the newest whose answer was used; the same for the slots. */
+  const stateSeq = useRef(0);
+  const appliedSeq = useRef(0);
+  const slotsSeq = useRef(0);
+  const appliedSlotsSeq = useRef(0);
   const soundRef = useRef(sound);
   soundRef.current = sound;
 
   const project = state?.projects.find((p) => p.id === projectId) ?? state?.projects[0] ?? null;
   const currentId = project?.id ?? null;
+  const current = loaded && loaded.project === currentId ? loaded : null;
+  const slots = current?.slots ?? null;
+  /** How many agents are waiting on this project's /wait, ready to be woken by Notify agent. */
+  const listening = current?.listening ?? 0;
+  /** Approvals the agent has not been told about; Notify agent sends them with the agent's turns. */
+  const newApprovals = current?.newApprovals ?? 0;
+  /** Items in the open project's _trash. */
+  const trashCount = current?.trash ?? 0;
 
-  const showToast = useCallback((message: string, isError = false, undo?: () => void) => setToast({ message, isError, id: Date.now(), undo }), []);
+  const showToast = useCallback(
+    (message: string, isError = false, undo?: () => void, detail?: string) => setToast({ message, detail, isError, id: Date.now(), undo }),
+    [],
+  );
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), toast.undo ? UNDO_MS : toast.isError ? 6000 : 2200);
@@ -166,12 +192,15 @@ function App() {
   }, []);
 
   const refresh = useCallback(async () => {
+    const seq = ++stateSeq.current;
     try {
       const next = await call<AppState>("GET", "/api/state");
-      const pending = next.projects.reduce((sum, p) => sum + humanTurn(p.counts), 0);
-      if (lastPending.current !== null && pending > lastPending.current && soundRef.current) beep();
-      lastPending.current = pending;
-      setState(next);
+      // An older request answering after a newer one would put the old state back, and chime again for the change.
+      if (seq < appliedSeq.current) return;
+      appliedSeq.current = seq;
+      if (chime.update(next.projects) && soundRef.current) beep();
+      // Every change in any project reloads the state: what did not change keeps its objects, and renders nothing.
+      setState((prev) => keepSame(prev, next));
       setLoadError(null);
     } catch (e) {
       setLoadError((e as Error).message);
@@ -179,16 +208,22 @@ function App() {
   }, []);
 
   const refreshSlots = useCallback(async () => {
-    if (!currentId) return setSlots(null);
+    if (!currentId) return;
+    const seq = ++slotsSeq.current;
     try {
-      const data = await call<{ slots: Slot[]; listening: number; newApprovals: number; trash: number }>("GET", `/api/projects/${enc(currentId)}`);
-      setSlots(data.slots);
-      setListening(data.listening);
-      setNewApprovals(data.newApprovals);
-      setTrashCount(data.trash);
+      const data = await call<Omit<ProjectData, "project">>("GET", `/api/projects/${enc(currentId)}`);
+      // As with the state: an older answer arriving after a newer one would put old slots back.
+      if (seq < appliedSlotsSeq.current) return;
+      appliedSlotsSeq.current = seq;
+      setLoaded((prev) => {
+        if (prev?.project !== currentId) return { project: currentId, ...data };
+        // Matched by name, since a new slot comes first and moves every other one down the list.
+        const before = new Map(prev.slots.map((s) => [s.name, s]));
+        return keepSame(prev, { project: currentId, ...data, slots: data.slots.map((s) => keepSame(before.get(s.name), s)) });
+      });
     } catch (e) {
       // A project deleted a moment ago is simply gone; the next state names the one shown instead.
-      if (!/^Project ".*" does not exist\.$/.test((e as Error).message)) showToast((e as Error).message, true);
+      if (!/^Project ".*" does not exist\.$/.test((e as ServerError).serverMessage ?? "")) showToast((e as Error).message, true);
     }
   }, [currentId, showToast]);
 
@@ -196,9 +231,24 @@ function App() {
     refresh();
   }, [refresh]);
   useEffect(() => {
-    setSlots(null);
     refreshSlots();
   }, [refreshSlots]);
+
+  // A file dropped beside a drop area would have the browser open it in place of the app. Drop areas take
+  // their files first; anywhere else the drop is refused, and the pointer says so.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.defaultPrevented || !e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "none";
+    };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => {
+      window.removeEventListener("dragover", guard);
+      window.removeEventListener("drop", guard);
+    };
+  }, []);
 
   const refreshAll = useRef(() => {});
   refreshAll.current = () => {
@@ -222,10 +272,11 @@ function App() {
   }, []);
 
   const act = useCallback(
-    async (fn: () => Promise<unknown>, done?: string) => {
+    async (fn: () => Promise<unknown>, done?: string | Notice) => {
       try {
         await fn();
-        if (done) showToast(done);
+        if (typeof done === "string") showToast(done);
+        else if (done) showToast(done.message, false, undefined, done.detail);
         refreshAll.current();
       } catch (e) {
         showToast((e as Error).message, true);
@@ -237,14 +288,27 @@ function App() {
   const upload = useCallback(
     (slot: string, n: number, files: File[]) => {
       if (!currentId || files.length === 0) return;
-      const form = new FormData();
-      for (const file of files) form.append("files", file);
+      const tooBig = files.find((f) => f.size > MAX_UPLOAD_BYTES);
+      if (tooBig) return showToast(t("{file} is larger than 1 GB, the most one file can be.", { file: tooBig.name }), true);
+      // The server holds a request in memory, so files that together pass the limit go in several requests.
+      const batches: File[][] = [];
+      for (const file of files) {
+        const last = batches.at(-1);
+        if (last && last.reduce((sum, f) => sum + f.size, 0) + file.size <= MAX_UPLOAD_BYTES) last.push(file);
+        else batches.push([file]);
+      }
       act(
-        () => call("POST", `${versionUrl(currentId, slot, n)}/results`, form),
+        async () => {
+          for (const batch of batches) {
+            const form = new FormData();
+            for (const file of batch) form.append("files", file);
+            await call("POST", `${versionUrl(currentId, slot, n)}/results`, form);
+          }
+        },
         files.length === 1 ? t("Result added to {slot} v{n}", { slot, n }) : t("{count} results added to {slot} v{n}", { count: files.length, slot, n }),
       );
     },
-    [act, currentId],
+    [act, currentId, showToast],
   );
 
   useEffect(() => {
@@ -260,29 +324,32 @@ function App() {
     return () => window.removeEventListener("paste", onPaste);
   }, [upload, showToast]);
 
+  // Made again only when the project or the presets change, not on every reload, so the cards can skip rendering.
   const ctx: Ctx | null = useMemo(
     () =>
-      project && {
-        project,
-        presets: state?.presets ?? [],
-        act,
-        toast: showToast,
-        undoable: (fn, done, undone) =>
-          act(async () => {
-            const { undo } = await fn();
-            const run = () => act(() => call("POST", `/api/projects/${enc(project.id)}/undo/${enc(undo)}`), undone);
-            lastUndo.current = run;
-            showToast(done, false, run);
-          }),
-        upload,
-        openLightbox: (items, index) => setDialog({ kind: "lightbox", items, index }),
-        openPrompt: (slot, version) => setDialog({ kind: "prompt", slot, version }),
-        openNewVersion: (slot) => setDialog({ kind: "version", slot }),
-        openClone: (slot) => setDialog({ kind: "clone", slot }),
-        openVariants: (slot) => setVariantsOf(slot.name),
-        setPasteTarget: (target) => (pasteTarget.current = target),
-      },
-    [project, state?.presets, act, showToast, upload],
+      currentId === null
+        ? null
+        : {
+            projectId: currentId,
+            presets: state?.presets ?? [],
+            act,
+            toast: showToast,
+            undoable: (fn, done, undone) =>
+              act(async () => {
+                const { undo } = await fn();
+                const run = () => act(() => call("POST", `/api/projects/${enc(currentId)}/undo/${enc(undo)}`), undone);
+                lastUndo.current = run;
+                showToast(done, false, run);
+              }),
+            upload,
+            openLightbox: (items, index) => setDialog({ kind: "lightbox", items, index }),
+            openPrompt: (slot, version) => setDialog({ kind: "prompt", slot, version }),
+            openNewVersion: (slot) => setDialog({ kind: "version", slot }),
+            openClone: (slot) => setDialog({ kind: "clone", slot }),
+            openVariants: (slot) => setVariantsOf(slot.name),
+            setPasteTarget: (target) => (pasteTarget.current = target),
+          },
+    [currentId, state?.presets, act, showToast, upload],
   );
 
   const chooseProject = (id: string) => {
@@ -309,9 +376,32 @@ function App() {
     .sort((a, b) => Number(a.status === "waiting_input") - Number(b.status === "waiting_input") || a.number - b.number);
   const done = (slots ?? []).filter((s) => s.status === "approved");
   const visible = inProgress.filter((s) => filter === "all" || s.status === filter);
-  // A card that leaves the list stays for its exit animation, so a change is seen as a card going, not swapping.
-  const shownCards = useLeaving(visible, (s) => s.name, `${currentId}:${tab}`);
-  const shownTiles = useLeaving(done, (s) => s.name, `${currentId}:${tab}`);
+  // A card that leaves the list stays for its exit animation, so a change is seen as a card going, not swapping;
+  // one that joins grows into place. Another filter is another view: it comes in whole, like another tab.
+  const cardScope = `${currentId}:${tab}:${filter}`;
+  const tileScope = `${currentId}:${tab}`;
+  const shownCards = useLeaving(visible, (s) => s.name, cardScope);
+  const shownTiles = useLeaving(done, (s) => s.name, tileScope);
+  // The others slide to their new places when one joins, goes or moves.
+  const feedRef = useRef<HTMLElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  useFlip(feedRef, shownCards.map((c) => c.key), cardScope);
+  useFlip(gridRef, shownTiles.map((c) => c.key), tileScope);
+  // A new filter keeps the cards it shares with the old one mounted, so their rise is played here, as a tab's is.
+  const lastFilter = useRef(filter);
+  useLayoutEffect(() => {
+    if (lastFilter.current === filter) return;
+    lastFilter.current = filter;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    feedRef.current?.querySelectorAll<HTMLElement>(":scope > .card-wrap > .card").forEach((card, i) => {
+      card.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], {
+        duration: 500,
+        delay: Math.min(i, 5) * 50,
+        easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        fill: "backwards",
+      });
+    });
+  }, [filter]);
 
   if (!state) {
     if (loadError) return <main className="blank">{t("Cannot reach the app server: {error}", { error: loadError })}</main>;
@@ -331,8 +421,10 @@ function App() {
           </div>
         </header>
         <nav className="tabs" aria-hidden="true">
-          <span className="skeleton skeleton-control" />
-          <span className="skeleton skeleton-control is-small" />
+          <div className="tabs-inner">
+            <span className="skeleton skeleton-control" />
+            <span className="skeleton skeleton-control is-small" />
+          </div>
         </nav>
         <main className="feed" data-width={width}>
           <LoadingSlots tab="progress" perRow={perRow} />
@@ -355,7 +447,19 @@ function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      <header className="topbar">
+      <header
+        className="topbar"
+        // A soft light follows the pointer across the bar, as on the landing page; mouse only, and gone when it leaves.
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+          e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.removeProperty("--mx");
+          e.currentTarget.style.removeProperty("--my");
+        }}
+      >
         <div className="brand">
           <Logo size={24} />
           <span className="brand-name">Asset Prompter</span>
@@ -372,12 +476,13 @@ function App() {
         {project && (
           <>
             <div className="split">
-              <button className="btn split-main" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
+              <button className="btn split-main" onClick={() => act(() => copyText(onboardingMessage(project.path)), { message: t("Instructions for the agent copied"), detail: onboardingMessage(project.path) })}>
                 <Icon name="robot" />
                 {t("Copy agent instructions")}
               </button>
+              {/* "Read", not "View": View is the layout panel by the tabs, and one name for two things confused. */}
               <button className="btn split-side" onClick={() => setDialog({ kind: "instructions" })} title={t("Show what gets copied")}>
-                {t("View")}
+                {t("Read")}
               </button>
             </div>
             <button className="link link-icon" onClick={() => act(() => call("POST", "/api/open", { path: project.path }))} title={t("Open the project folder")}>
@@ -395,6 +500,7 @@ function App() {
             <Icon name="help" />
             <span className="narrow-hide">{t("Tutorial")}</span>
           </button>
+          <ThemeSwitch />
           <button
             className={`toggle${sound ? " is-on" : ""}`}
             role="switch"
@@ -409,17 +515,12 @@ function App() {
             <Icon name={sound ? "speaker" : "mute"} />
             <span className="narrow-hide">{sound ? t("Sound on") : t("Sound off")}</span>
           </button>
-          {project && (
-            <button className="btn btn-primary" onClick={() => setDialog({ kind: "slot" })} title={t("New slot")}>
-              <Icon name="plus" />
-              <span className="narrow-hide">{t("New slot")}</span>
-            </button>
-          )}
         </div>
       </header>
 
       {project && (
-        <nav className="tabs" aria-label={t("Views")}>
+        <nav className="tabs" data-width={width} aria-label={t("Views")}>
+          <div className="tabs-inner">
           <button className={`tab${tab === "progress" ? " is-on" : ""}`} onClick={() => chooseTab("progress")}>
             <Icon name="hourglass" />
             {t("In progress")} <span className={`filter-count${inProgress.length > 0 ? " is-hot" : ""}`}>{inProgress.length}</span>
@@ -429,19 +530,33 @@ function App() {
             {t("Done")} <span className="filter-count">{done.length}</span>
           </button>
           <div className="tabs-tools">
+            {/* The add button of the open tab: a slot to generate, or a finished file straight into Done. */}
+            {tab === "progress" ? (
+              <button className="view-button" onClick={() => setDialog({ kind: "slot" })}>
+                <Icon name="plus" />
+                {t("New slot")}
+              </button>
+            ) : (
+              <button className="view-button" onClick={() => setDialog({ kind: "final" })} title={t("Add a finished image or video straight to Done, with no prompt")}>
+                <Icon name="plus" />
+                {t("Add finished asset")}
+              </button>
+            )}
             {trashCount > 0 && (
-              <button className="view-button" onClick={() => setDialog({ kind: "projectTrash" })} title={t("Deleted slots and results of this project")}>
+              <button className="view-button" onClick={() => setDialog({ kind: "projectTrash" })}>
                 <Icon name="trash" />
                 {t("Trash")} <span className="filter-count">{trashCount}</span>
               </button>
             )}
             <ViewSettings tab={tab} view={view} />
           </div>
+          </div>
         </nav>
       )}
 
       {project && tab === "progress" && (
-        <nav className="filters" aria-label={t("Filter slots")}>
+        <nav className="filters" data-width={width} aria-label={t("Filter slots")}>
+          <div className="filters-inner">
           {FILTERS.map((f) => (
             <button key={f} className={`filter filter-${f}${filter === f ? " is-on" : ""}`} onClick={() => setFilter(f)}>
               {f === "all" ? <Icon name="grid" size={12} /> : <Icon name={STATUS_ICON[f]} size={12} />}
@@ -509,28 +624,29 @@ function App() {
             </button>
           )}
           </div>
+          </div>
         </nav>
       )}
 
-      <main className={`feed${compact && tab === "progress" ? " is-compact" : ""}`} data-width={width}>
+      <main ref={feedRef} className={`feed${compact && tab === "progress" ? " is-compact" : ""}`} data-width={width}>
         {!project && (
           <div className="blank">
             <EmptyArt />
             <h1>{t("Start with a project")}</h1>
             <p>{t("A project is a folder. Your agent writes prompts into it, and you drop the generated images and videos back in.")}</p>
             <button className="btn btn-primary" onClick={() => setDialog({ kind: "project" })}>
-              {t("Add a project")}
+              {t("Create project")}
             </button>
           </div>
         )}
-        {project && slots && slots.length === 0 && (
+        {project && slots && slots.length === 0 && (tab === "progress" ? shownCards : shownTiles).length === 0 && (
           <div className="blank">
             <EmptyArt />
             <h1>{t("No slots in {name} yet", { name: project.name })}</h1>
             <p>
               {t("Paste the agent instructions into your agent's chat and it will start writing prompts here. You can also write the first one yourself.")}
             </p>
-            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
+            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), { message: t("Instructions for the agent copied"), detail: onboardingMessage(project.path) })}>
               {t("Copy agent instructions")}
             </button>
             <button className="btn" onClick={() => setDialog({ kind: "slot" })}>
@@ -538,30 +654,35 @@ function App() {
             </button>
           </div>
         )}
-        {tab === "progress" && project && slots && slots.length > 0 && visible.length === 0 && (
-          <div className="blank blank-center">
+        {tab === "progress" && project && slots && slots.length > 0 && shownCards.length === 0 && (
+          // Only once the last card has finished leaving, so the picture never lands on top of it.
+          <div key={filter} className="blank blank-center">
             <EmptyArt filter={filter} />
-            <p>{filter === "all" ? t("Nothing in progress. Approved assets are in Done.") : t("Nothing here: no slot is \"{status}\".", { status: t(STATUS_LABEL[filter as Status]) })}</p>
+            <p>{filter === "all" ? t("Nothing in progress. Approved assets are in Done.") : t("Nothing here, no slot is \"{status}\".", { status: t(STATUS_LABEL[filter as Status]) })}</p>
           </div>
         )}
         {project && !slots && <LoadingSlots tab={tab} perRow={perRow} />}
         {tab === "progress" &&
           ctx &&
-          shownCards.map(({ key, item, leaving }) => (
-            <div key={key} className={`card-wrap${leaving ? " is-leaving" : ""}`} aria-hidden={leaving || undefined}>
+          shownCards.map(({ key, item, leaving, entering, arrived }) => (
+            <div key={key} data-flip={key} className={`card-wrap${leaving ? " is-leaving" : ""}${entering ? " is-entering" : ""}${arrived ? " is-arrived" : ""}`} aria-hidden={leaving || undefined}>
               <SlotCard slot={item} />
             </div>
           ))}
-        {tab === "done" && project && slots && slots.length > 0 && done.length === 0 && (
+        {tab === "done" && project && slots && slots.length > 0 && shownTiles.length === 0 && (
           <div className="blank blank-center">
             <EmptyArt done />
             <p>{t("Nothing approved yet. Approved assets show up here.")}</p>
+            <button className="btn" onClick={() => setDialog({ kind: "final" })}>
+              <Icon name="plus" />
+              {t("Add finished asset")}
+            </button>
           </div>
         )}
-        {tab === "done" && ctx && done.length > 0 && (
-          <div className={`done-grid${compact ? " is-compact" : ""}`} style={{ "--per-row": perRow } as React.CSSProperties}>
-            {shownTiles.map(({ key, item: slot, leaving }) => (
-              <div key={key} className={`tile-wrap${leaving ? " is-leaving" : ""}`} aria-hidden={leaving || undefined}>
+        {tab === "done" && ctx && shownTiles.length > 0 && (
+          <div ref={gridRef} className={`done-grid${compact ? " is-compact" : ""}`} style={{ "--per-row": perRow } as React.CSSProperties}>
+            {shownTiles.map(({ key, item: slot, leaving, entering, arrived }) => (
+              <div key={key} data-flip={key} className={`tile-wrap${leaving ? " is-leaving" : ""}${entering ? " is-entering" : ""}${arrived ? " is-arrived" : ""}`} aria-hidden={leaving || undefined}>
                 <DoneTile
                   slot={slot}
                   onOpen={() => {
@@ -593,8 +714,12 @@ function App() {
           <a href="https://github.com/Djordje1998/asset-prompter" target="_blank" rel="noopener">
             GitHub
           </a>
-          <a href="https://github.com/Djordje1998/asset-prompter/issues/new/choose" target="_blank" rel="noopener">
+          {/* Each opens GitHub's form for its kind, already filled with the questions to answer. */}
+          <a href="https://github.com/Djordje1998/asset-prompter/issues/new?template=bug.md" target="_blank" rel="noopener">
             {t("Report a problem")}
+          </a>
+          <a href="https://github.com/Djordje1998/asset-prompter/issues/new?template=feature.md" target="_blank" rel="noopener">
+            {t("Suggest a feature")}
           </a>
           <button className="foot-link" onClick={() => setTouring(true)}>
             {t("Tutorial")}
@@ -625,7 +750,7 @@ function App() {
         <Modal title={t("Agent instructions")} onClose={close} wide>
           <pre className="prompt-full">{onboardingMessage(project.path)}</pre>
           <footer className="modal-foot">
-            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), t("Instructions for the agent copied"))}>
+            <button className="btn btn-primary" onClick={() => act(() => copyText(onboardingMessage(project.path)), { message: t("Instructions for the agent copied"), detail: onboardingMessage(project.path) })}>
               <Icon name="copy" />
               {t("Copy")}
             </button>
@@ -638,7 +763,7 @@ function App() {
           items={dialog.items}
           start={dialog.index}
           onClose={close}
-          onCopyImage={(url) => act(() => copyImage(url), t("Image copied"))}
+          onCopyImage={(url) => act(() => copyImage(url), { message: t("Image copied"), detail: fileNameOf(url) })}
           pick={{
             of: (item) => {
               if (!item.pickable) return undefined;
@@ -661,7 +786,7 @@ function App() {
             act(async () => {
               await copyText(dialog.version.prompt);
               if (project) markPromptCopied(copiedKey(project.id, dialog.slot.name, dialog.version.n), dialog.version.prompt);
-            }, t("Prompt copied"))
+            }, { message: t("Prompt copied"), detail: dialog.version.prompt })
           } />
       )}
       {dialog?.kind === "deleteProject" && (
@@ -692,6 +817,7 @@ function App() {
           url="/api/trash"
           onClose={close}
           onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
+          onDelete={(item) => act(() => call("DELETE", "/api/trash" + `/${enc(item.entry)}`), t("{name} sent to the recycle bin", { name: item.name }))}
           onRestore={(item) =>
             act(async () => {
               const { id } = await call<{ id: string }>("POST", "/api/trash/restore", { entry: item.entry });
@@ -706,6 +832,7 @@ function App() {
           url={`/api/projects/${enc(project.id)}/trash`}
           onClose={close}
           onOpenFolder={(path) => act(() => call("POST", "/api/open", { path }))}
+          onDelete={(item) => act(() => call("DELETE", `/api/projects/${enc(project.id)}/trash` + `/${enc(item.entry)}`), t("{name} sent to the recycle bin", { name: item.name }))}
           onRestore={(item) =>
             act(async () => {
               const { restored } = await call<{ restored: string }>("POST", `/api/projects/${enc(project.id)}/trash/restore`, { entry: item.entry });
@@ -737,6 +864,17 @@ function App() {
               await call("POST", `/api/projects/${enc(project.id)}/slots`, { name, description, version });
               close();
             }, t("Slot {name} created", { name }))
+          }
+        />
+      )}
+      {dialog?.kind === "final" && project && (
+        <AddFinalDialog
+          onClose={close}
+          onAdd={(form, name) =>
+            act(async () => {
+              await call("POST", `/api/projects/${enc(project.id)}/slots/final`, form);
+              close();
+            }, t("{name} added to Done", { name }))
           }
         />
       )}
@@ -773,7 +911,14 @@ function App() {
 
       {toast && (
         <div key={toast.id} className={`toast${toast.isError ? " is-error" : ""}`} role="status">
-          <span className="toast-message">{toast.message}</span>
+          <span className="toast-message">
+            {toast.message}
+            {toast.detail && (
+              <span className="toast-detail" title={toast.detail}>
+                {toast.detail}
+              </span>
+            )}
+          </span>
           {toast.undo && (
             <button className="toast-undo" onClick={runUndo} title={t("Undo (Ctrl+Z)")}>
               {t("Undo")}
@@ -789,9 +934,24 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <>
-    <App />
-    <Tooltips />
-  </>,
-);
+/**
+ * Shown inside another site's frame, the page could sit invisible under a decoy, so a click meant for the decoy
+ * lands on "Delete for good" (clickjacking). The server cannot send the header that forbids framing with the
+ * bundled page, so the page refuses to start there instead. A cross-origin parent throws on access: framed too.
+ */
+function framed(): boolean {
+  try {
+    return window.top !== window.self;
+  } catch {
+    return true;
+  }
+}
+
+if (!framed()) {
+  createRoot(document.getElementById("root")!).render(
+    <>
+      <App />
+      <Tooltips />
+    </>,
+  );
+}

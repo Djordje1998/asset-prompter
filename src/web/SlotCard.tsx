@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Slot, Version } from "../shared/types";
 import { useApp } from "./context";
 import { readStored, writeStored } from "./hooks";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { STATUS_LABEL, call, copyText, slotUrl } from "./lib";
-import { CopyName, Fold, Media, STATUS_ICON, SlotNumber } from "./shared";
+import { CopyName, FOLD_MS, Fold, Media, STATUS_ICON, SlotNumber } from "./shared";
 import { VersionBody, WarningChip } from "./Version";
 
 function Chevron({ open }: { open: boolean }) {
@@ -16,16 +16,21 @@ function Chevron({ open }: { open: boolean }) {
 const collapseKey = (project: string, slot: string) => `collapsed:${project}:${slot}`;
 
 /**
- * `onClose` puts a close button at the end of the head, for when the card is a dialog of its own.
  * `single` shows one version at a time: opening an older one folds the current one away.
+ * A reload keeps an unchanged slot the same object, so its card skips rendering.
  */
-export function SlotCard({ slot, collapsible = true, onClose, single = false }: { slot: Slot; collapsible?: boolean; onClose?: () => void; single?: boolean }) {
+export const SlotCard = memo(function SlotCard({ slot, collapsible = true, single = false }: { slot: Slot; collapsible?: boolean; single?: boolean }) {
   const ctx = useApp();
   const [open, setOpen] = useState<Set<number>>(new Set());
   /** In `single` mode, the one open version; null means the current one. */
   const [only, setOnly] = useState<number | null>(null);
+  /** In `single` mode, while one version folds into another: whether the card had a scrollbar when it began. */
+  const [switching, setSwitching] = useState<"bar" | "plain" | null>(null);
+  const card = useRef<HTMLElement>(null);
+  const switchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(switchTimer.current), []);
   const [confirming, setConfirming] = useState(false);
-  const key = collapseKey(ctx.project.id, slot.name);
+  const key = collapseKey(ctx.projectId, slot.name);
   const [collapsedState, setCollapsed] = useState(() => readStored(key) === "1");
   const collapsed = collapsible && collapsedState;
   const toggleCollapsed = () => {
@@ -40,9 +45,18 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
   const collapsedThumb = thumbVersion ? (thumbVersion.results.find((c) => c.file === thumbVersion.selected) ?? thumbVersion.results[0]) : undefined;
   // The current version is always open, except in `single` mode while an older one is shown instead.
   const isOpen = (n: number) => (single ? (only ?? latest?.n) === n : n === latest?.n || open.has(n));
+  const switchTo = (n: number | null) => {
+    if ((n ?? latest?.n) === (only ?? latest?.n)) return;
+    // Measured before anything moves; a switch begun mid-switch keeps the first one's scrollbar.
+    const el = card.current;
+    setSwitching((prev) => prev ?? (el && el.scrollHeight > el.clientHeight ? "bar" : "plain"));
+    clearTimeout(switchTimer.current);
+    switchTimer.current = setTimeout(() => setSwitching(null), FOLD_MS + 40);
+    setOnly(n);
+  };
   const toggle = (n: number) =>
     single
-      ? setOnly(isOpen(n) && n !== latest?.n ? null : n)
+      ? switchTo(isOpen(n) && n !== latest?.n ? null : n)
       : setOpen((prev) => {
           const next = new Set(prev);
           next.has(n) ? next.delete(n) : next.add(n);
@@ -56,7 +70,7 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
           <Chevron open={isOpen(v.n)} />
         </span>
         <span className="card-version">v{v.n}</span>
-        {thumb && <Media item={thumb} className="older-thumb" />}
+        {thumb && <Media item={thumb} className="older-thumb" thumb />}
         <span className="older-summary">
           {slot.approved === v.n ? `${t("Approved.")} ` : ""}
           {v.changeRequest
@@ -72,7 +86,10 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
   };
 
   return (
-    <article className={`card status-${slot.status}${collapsed ? " is-collapsed" : ""}${collapsed && (slot.description || collapsedThumb) ? " has-summary" : ""}`}>
+    <article
+      ref={card}
+      className={`card status-${slot.status}${collapsed ? " is-collapsed" : ""}${collapsed && (slot.description || collapsedThumb) ? " has-summary" : ""}${switching ? ` is-switching${switching === "bar" ? " has-bar" : ""}` : ""}`}
+    >
       <header className="card-head">
         {collapsible && (
           <button className="card-toggle" onClick={toggleCollapsed} aria-expanded={!collapsed} title={collapsed ? t("Expand") : t("Collapse")}>
@@ -100,15 +117,15 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
           <button className="link" onClick={() => ctx.openClone(slot)}>
             {t("Clone")}
           </button>
-          <button className="link" onClick={() => ctx.act(() => copyText(slot.path), t("Slot path copied"))}>
+          <button className="link" onClick={() => ctx.act(() => copyText(slot.path), { message: t("Slot path copied"), detail: slot.path })}>
             {t("Copy path")}
           </button>
           {confirming ? (
             <>
               <button
-                className="link danger"
+                className="link danger is-strong"
                 onClick={() =>
-                  ctx.undoable(() => call("DELETE", slotUrl(ctx.project.id, slot.name)), t('Slot "{name}" moved to _trash', { name: slot.name }), t('Slot "{name}" is back', { name: slot.name }))
+                  ctx.undoable(() => call("DELETE", slotUrl(ctx.projectId, slot.name)), t('Slot "{name}" moved to _trash', { name: slot.name }), t('Slot "{name}" is back', { name: slot.name }))
                 }
               >
                 {t("Move to _trash")}
@@ -123,22 +140,34 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
             </button>
           )}
         </div>
-        {onClose && (
-          <button className="modal-close" onClick={onClose} aria-label={t("Close")} title={t("Close (Esc)")}>
-            <Icon name="x" size={12} />
-          </button>
-        )}
       </header>
-      {collapsed && (slot.description || collapsedThumb) && (
-        <button className="card-summary" onClick={toggleCollapsed} title={t("Expand")}>
-          {collapsedThumb && <Media item={collapsedThumb} className="card-summary-thumb" />}
-          {slot.description && <p>{slot.description}</p>}
-        </button>
+      {/* The brief stays in place whether the card is open or folded, so nothing jumps or doubles; folded, it
+          also carries the newest result and opens the card again. */}
+      {(slot.description || (collapsed && collapsedThumb)) && (
+        <div
+          className={`card-brief${collapsed ? " is-summary" : ""}`}
+          onClick={collapsed ? toggleCollapsed : undefined}
+          role={collapsed ? "button" : undefined}
+          tabIndex={collapsed ? 0 : undefined}
+          onKeyDown={collapsed ? (e) => (e.key === "Enter" || e.key === " ") && toggleCollapsed() : undefined}
+          title={collapsed ? t("Expand") : undefined}
+        >
+          {collapsed && collapsedThumb && <Media item={collapsedThumb} className="card-summary-thumb" thumb />}
+          {slot.description && <p className="card-description">{slot.description}</p>}
+        </div>
       )}
       <Fold open={!collapsed}>
-        {slot.description && <p className="card-description">{slot.description}</p>}
         {latest ? (
-          isOpen(latest.n) ? (
+          single && older.length > 0 ? (
+            // One version at a time: the current one folds like the others, so when another opens this one
+            // closes at the same pace and the dialog keeps its height through the change.
+            <section className="older">
+              {row(latest)}
+              <Fold open={isOpen(latest.n)}>
+                <VersionBody slot={slot} version={latest} />
+              </Fold>
+            </section>
+          ) : isOpen(latest.n) ? (
             <VersionBody slot={slot} version={latest} />
           ) : (
             <section className="older">{row(latest)}</section>
@@ -157,4 +186,4 @@ export function SlotCard({ slot, collapsible = true, onClose, single = false }: 
       </Fold>
     </article>
   );
-}
+});

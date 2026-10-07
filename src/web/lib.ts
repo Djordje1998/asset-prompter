@@ -1,25 +1,91 @@
 import type { Status } from "../shared/types";
+import { chime } from "./chime";
+import { serverText } from "./serverText";
 import { LOCALE, lang, t } from "./i18n";
 
 /** Fired after every request that changed something, so an older undo can no longer apply. */
 export const CHANGED_EVENT = "app-changed";
 /** Requests that change nothing in the slots: opening a folder, waking the agent, and an undo itself. */
 const NOT_A_CHANGE = /^\/api\/open$|\/notify$|\/undo\//;
+/** Requests that are the person's own and change no slot: an undo does, so it counts as theirs. */
+const NOT_OWN = /^\/api\/open$|\/notify$/;
+
+/** A failed request: `message` in the page's language, `serverMessage` as the server wrote it. */
+export class ServerError extends Error {
+  serverMessage: string | null = null;
+}
 
 export async function call<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
   const isForm = body instanceof FormData;
-  const res = await fetch(url, {
-    method,
-    headers: body !== undefined && !isForm ? { "Content-Type": "application/json" } : undefined,
-    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
-  });
+  // The person's own change: what it causes must not chime as the agent's work.
+  const done = method !== "GET" && !NOT_OWN.test(url) ? chime.mine(url, body) : null;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body !== undefined && !isForm ? { "Content-Type": "application/json" } : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
+    });
+  } finally {
+    done?.();
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? t("Request failed ({status})", { status: res.status }));
+  if (!res.ok) {
+    // Shown in the page's language; the server's own words stay on the error for code that tells them apart.
+    const error = new ServerError(data.error ? serverText(data.error) : t("Request failed ({status})", { status: res.status }));
+    error.serverMessage = data.error ?? null;
+    throw error;
+  }
   if (method !== "GET" && !NOT_A_CHANGE.test(url)) window.dispatchEvent(new Event(CHANGED_EVENT));
   return data as T;
 }
 
+/**
+ * `next`, with every part that equals the same part of `prev` replaced by that part, and `prev` itself when
+ * nothing differs. A reload that changed one slot then leaves every other slot the same object, so the cards
+ * that show them can skip rendering, and a reload that changed nothing renders nothing.
+ */
+export function keepSame<T>(prev: T | null | undefined, next: T): T {
+  if (Object.is(prev, next)) return prev as T;
+  if (typeof prev !== "object" || typeof next !== "object" || prev === null || next === null || Array.isArray(prev) !== Array.isArray(next)) return next;
+  if (Array.isArray(next)) {
+    const old = prev as unknown[];
+    const kept = next.map((item, i) => keepSame(old[i], item));
+    return (kept.length === old.length && kept.every((item, i) => item === old[i]) ? prev : kept) as T;
+  }
+  const old = prev as Record<string, unknown>;
+  const kept: Record<string, unknown> = {};
+  let same = Object.keys(old).length === Object.keys(next).length;
+  for (const [key, value] of Object.entries(next)) {
+    kept[key] = keepSame(old[key], value);
+    if (kept[key] !== old[key] || !(key in old)) same = false;
+  }
+  return (same ? prev : kept) as T;
+}
+
 export const enc = encodeURIComponent;
+
+/**
+ * A slot name as it is typed: lowercase letters, digits and single hyphens, the rule the server holds it to;
+ * a space or any other character becomes a hyphen at once, rather than an error after Create.
+ */
+export const typedSlotName = (value: string) =>
+  value
+    .toLowerCase()
+    // Letters with marks keep their letter (č → c, š → s); đ has none to drop, so it is written out.
+    .replace(/đ/g, "dj")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "");
+/** The typed name as it is sent: a hyphen left at the end, while the next word was still to come, goes. */
+export const slotNameOf = (value: string) => value.replace(/-+$/, "");
+
+/**
+ * The small copy of an image in a project, for a tile or a strip; the server sends the original when it has
+ * none (a video, a small picture, no ffmpeg). Files outside a project have none.
+ */
+export const thumbUrl = (url: string) => (url.startsWith("/files/") ? `${url}${url.includes("?") ? "&" : "?"}thumb` : url);
 export const slotUrl = (project: string, slot: string) => `/api/projects/${enc(project)}/slots/${enc(slot)}`;
 export const versionUrl = (project: string, slot: string, n: number) => `${slotUrl(project, slot)}/versions/${n}`;
 
@@ -35,8 +101,35 @@ export const STATUS_LABEL: Record<Status, string> = {
 /** Slots where the human has something to do: generate, or confirm what the agent approved. */
 export const humanTurn = (counts: Record<Status, number>) => counts.waiting_generation + counts.waiting_review;
 
+/**
+ * A write to the clipboard the browser turned down, said so a person can act on it: the browser's own message
+ * ("Failed to execute 'writeText' on 'Clipboard'...") is meant for developers and is always in English.
+ */
+function clipboardRefused(e: unknown): Error {
+  const name = (e as DOMException)?.name;
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return new Error(t("Copying did not work: the browser did not allow the page to use the clipboard. Click the page and try again."));
+  }
+  return new Error(t("Copying did not work. Try again."));
+}
+
 export async function copyText(text: string): Promise<void> {
-  await navigator.clipboard.writeText(text);
+  if (!navigator.clipboard?.writeText) throw new Error(t("This browser cannot copy from the page."));
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    throw clipboardRefused(e);
+  }
+}
+
+/** The file a URL of the app names, for saying what was copied: "/files/p/hero/v1/2.png?t=1" → "2.png". */
+export function fileNameOf(url: string): string {
+  const last = url.split(/[?#]/)[0]!.split("/").pop() ?? url;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
 }
 
 /** Images (or videos) on the clipboard, e.g. from a generator's "Copy image". */
@@ -56,7 +149,8 @@ export async function clipboardFiles(): Promise<File[]> {
     const type = item.types.find((t) => t.startsWith("image/") || t.startsWith("video/"));
     if (!type) continue;
     const blob = await item.getType(type);
-    files.push(new File([blob], `pasted.${type.split("/")[1]!.replace("jpeg", "jpg")}`, { type }));
+    // "image/svg+xml" names a .svg file, not a .svg+xml one.
+    files.push(new File([blob], `pasted.${type.split("/")[1]!.replace("jpeg", "jpg").replace(/\+.*$/, "")}`, { type }));
   }
   if (files.length === 0) throw new Error(t("There is no image on the clipboard. Copy the image in the generator first."));
   return files;
@@ -73,7 +167,12 @@ export async function copyImage(url: string): Promise<void> {
   canvas.getContext("2d")!.drawImage(img, 0, 0);
   const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
   if (!blob) throw new Error(t("This image could not be copied."));
-  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  if (!navigator.clipboard?.write) throw new Error(t("This browser cannot copy from the page."));
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  } catch (e) {
+    throw clipboardRefused(e);
+  }
 }
 
 /** Lets a result be dragged out of the page straight into a generator or a folder (Chromium browsers). */
